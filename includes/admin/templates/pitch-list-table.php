@@ -19,12 +19,13 @@ class Pitch_List_Table extends WP_List_Table {
 
 	private $wp_time_format;
 
+	private const ALLOWED_ORDERBY_COLUMNS = ['category', 'topic', 'main_seo_keyword', 'status', 'created_at'];
+
 	/**
     * Constructor, we override the parent to pass our own arguments
     * We usually focus on three parameters: singular and plural labels, as well as whether the class supports AJAX.
     */
     function __construct() {
-
 		$this->wp_date_format = get_option('date_format');
 		$this->wp_time_format = get_option('time_format');
 
@@ -39,66 +40,15 @@ class Pitch_List_Table extends WP_List_Table {
 	 * Add extra markup in the toolbars before or after the list
 	 * @param string $which, helps you decide if you add the markup after (bottom) or before (top) the list
 	 */
-	function extra_tablenav($which)
-    {
+	function extra_tablenav($which) {
 		$this->table_data = $this->get_table_data();
 
-        if ($which === "top") {
-            ?>
-            <div class="alignleft actions bulkactions">
-                    <?php
-
-                    global $wpdb;
-
-                    $table_name = $wpdb->prefix . $this->table_name;
-
-                    // Obter categorias únicas
-                    $cats = $wpdb->get_results("SELECT DISTINCT category FROM {$table_name} WHERE category IS NOT NULL ORDER BY category ASC", ARRAY_A);
-
-                    if ($cats) {
-
-						$selected_cat = sf_retrieve($_POST, 'cat-filter', false);
-
-                        ?>
-                        <select name="cat-filter">
-                            <option value=""><?php echo esc_html__('Filter by Category', 'story-flow'); ?></option>
-                            <?php
-                            foreach ($cats as $cat) {
-                                $selected = ($selected_cat !== false && $selected_cat === $cat['category']) ? 'selected="selected"' : '';
-								printf('<option value="%s" %s>%s</option>', esc_attr($cat['category']), esc_attr($selected), esc_html($cat['category']));
-                            }
-                            ?>
-                        </select>
-                        <?php
-                    }
-
-                    // Obter tópicos únicos
-                    $topics = $wpdb->get_results("SELECT DISTINCT topic FROM {$table_name} WHERE topic IS NOT NULL ORDER BY topic ASC", ARRAY_A);
-
-                    if ($topics) {
-
-						$selected_topic = sf_retrieve($_POST, 'topic-filter', false);
-
-                        ?>
-                        <select name="topic-filter">
-                            <option value=""><?php echo esc_html__('Filter by Topic', 'story-flow'); ?></option>
-                            <?php
-                            foreach ($topics as $topic) {
-								$selected = ($selected_topic !== false && $selected_topic === $topic['topic']) ? 'selected="selected"' : '';
-								printf('<option value="%s" %s>%s</option>', esc_attr($topic['topic']), esc_attr($selected), esc_html($topic['topic']));
-                            }
-						?>
-                        </select>
-                        <?php
-                    }
-
-					if (($topics) || ($cats)) {
-                    	echo '<button type="submit" class="button">' . esc_html__('Filter', 'story-flow') . '</button>';
-					}
-					?>
-            </div>
-            <?php
-        }
+		if ($which === 'top') {
+			echo '<div class="alignleft actions bulkactions">';
+			$this->render_filters();
+			echo '<button type="submit" class="button">' . esc_html__('Filter', 'story-flow') . '</button>';
+			echo '</div>';
+		}
     }
 
 	/**
@@ -107,7 +57,6 @@ class Pitch_List_Table extends WP_List_Table {
 	 */
 	function get_columns() {
 		return $columns = [
-			// 'cb'				=> '<input type="checkbox" />',
 			'category'			=> 'Category',
 			'topic'				=> 'Topic',
 			'main_seo_keyword'	=> 'SEO Keyword',
@@ -131,88 +80,74 @@ class Pitch_List_Table extends WP_List_Table {
 	}
 
 	// Get table data
-	private function get_table_data() {
+	private function get_table_data($per_page = 10, $current_page = 1, $orderby = 'created_at', $order = 'ASC') {
 		global $wpdb;
 
-		$table = $wpdb->prefix . 'sf_pitch_suggetion';
-
-		// Obter o filtro de status, se fornecido
-		$pitch_status = sf_retrieve($_GET, 'pitch_status', '');
+		$table = $wpdb->prefix . $this->table_name;
 
 		// Filters
+		$pitch_status       = sf_retrieve($_GET, 'pitch_status', 'all', 'sanitize_text_field');
         $category_filter	= sf_retrieve($_POST, 'cat-filter', '', 'sanitize_text_field');
         $topic_filter		= sf_retrieve($_POST, 'topic-filter', '', 'sanitize_text_field');
 		$search				= sf_retrieve($_POST, 's', '', 'sanitize_text_field');
 
+    	// Validar parâmetros de ordenação
+		$orderby = in_array($orderby, self::ALLOWED_ORDERBY_COLUMNS) ? $orderby : 'created_at';
+		$order   = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
+    	$order   = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
+
 		if (empty($pitch_status)) {
-			$pitch_status = sf_retrieve($_POST, 'pitch_status', '');
+			$pitch_status = sf_retrieve($_POST, 'pitch_status', 'all', 'sanitize_text_field');
 		}
 
 		// Base da query
 		$query = "SELECT * FROM {$table} WHERE 1=1";
 
-		// Adicionar filtro, se necessário
-		if (!empty($pitch_status) && $pitch_status !== 'all') {
-			$query .= $wpdb->prepare(" AND status = %s", $pitch_status);
+		$filters = [
+			'category'  => $category_filter,
+			'topic'     => $topic_filter,
+			'suggested_pitch LIKE' => !empty($search) ? '%' . $wpdb->esc_like($search) . '%' : null,
+		];
+
+		// Adicionar filtro de status apenas se necessário
+		if ($pitch_status !== 'all') {
+			$filters['status'] = $pitch_status;
 		}
 
-        // Adicionar filtro de categoria
-        if (!empty($category_filter)) {
-            $query .= $wpdb->prepare(" AND category = %s", $category_filter);
-        }
+		$query .= $this->build_filters($filters);
 
-		// Adicionar filtro de tópico
-		if (!empty($topic_filter)) {
-			$query .= $wpdb->prepare(" AND topic = %s", $topic_filter);
-		}
-
-		// Adicionar busca no campo suggested_pitch
-		if (!empty($search)) {
-			$query .= $wpdb->prepare(" AND suggested_pitch LIKE %s", '%' . $wpdb->esc_like($search) . '%');
-		}
+		$offset = ($current_page - 1) * $per_page;
+		$query .= " ORDER BY {$orderby} {$order}";
+		$query .= $wpdb->prepare(" LIMIT %d OFFSET %d", $per_page, $offset);
 
 		// Retornar os resultados da tabela
 		return $wpdb->get_results($query, ARRAY_A);
 	}
-
-	// Sorting function
-	function usort_reorder($a, $b)
-	{
-		// If no sort, default to user_login
-		$orderby = sf_retrieve($_GET, 'orderby', 'created_at');
-
-		// If no order, default to asc
-		$order = sf_retrieve($_GET, 'order', 'asc');
-
-		// Determine sort order
-		$result = strcmp($a[$orderby], $b[$orderby]);
-
-		// Send final sort direction to usort
-		return ($order === 'asc') ? $result : -$result;
-	}
-
 
 	/**
 	 * Prepare the table with different parameters, pagination, columns and table elements
 	 */
 	function prepare_items() {
 
-		$this->table_data = $this->get_table_data();
+		// Definir parâmetros de paginação
+		$per_page = $this->get_items_per_page('elements_per_page', 10);
+		$current_page = $this->get_pagenum();
+
+		// Obter parâmetros de ordenação
+		$orderby = sf_retrieve($_GET, 'orderby', 'created_at', 'sanitize_text_field');
+		$order   = sf_retrieve($_GET, 'order', 'asc', 'sanitize_text_field');
+
+		// Obter dados da tabela com paginação e ordenação
+		$this->table_data = $this->get_table_data($per_page, $current_page, $orderby, $order);
 
         $columns = $this->get_columns();
-        $hidden = array();
+        $hidden = [];
         $sortable = $this->get_sortable_columns();
 		$primary  = 'id';
         $this->_column_headers = array($columns, $hidden, $sortable, $primary);
 
-        usort($this->table_data, array(&$this, 'usort_reorder'));
-
-		/* pagination */
-		$per_page = $this->get_items_per_page('elements_per_page', 10);;
-		$current_page = $this->get_pagenum();
-		$total_items = count($this->table_data);
-
-		$this->table_data = array_slice($this->table_data, (($current_page - 1) * $per_page), $per_page);
+		// Contar o total de itens (sem paginação)
+		$total_items = $this->get_total_items();
 
 		$this->set_pagination_args(array(
 				'total_items' => $total_items, // total number of items
@@ -221,103 +156,84 @@ class Pitch_List_Table extends WP_List_Table {
 		));
 
         $this->items = $this->table_data;
-
  	}
+
+	/**
+	 * Contar o número total de itens na tabela para paginação.
+	 *
+	 * @return int Total de itens.
+	 */
+	private function get_total_items() {
+		global $wpdb;
+
+		$table = $wpdb->prefix . $this->table_name;
+
+		$pitch_status = sf_retrieve($_GET, 'pitch_status', 'all', 'sanitize_text_field');
+
+		$filters = [
+			'category'             => sf_retrieve($_POST, 'cat-filter', '', 'sanitize_text_field'),
+			'topic'                => sf_retrieve($_POST, 'topic-filter', '', 'sanitize_text_field'),
+			'suggested_pitch LIKE' => !empty($search) ? '%' . $wpdb->esc_like($search) . '%' : null,
+		];
+
+		// Adicionar filtro de status apenas se necessário
+		if ($pitch_status !== 'all') {
+			$filters['status'] = $pitch_status;
+		}
+
+		$query = "SELECT COUNT(*) FROM {$table} WHERE 1=1";
+		$query .= $this->build_filters($filters);
+
+		return (int) $wpdb->get_var($query);
+	}
 
 	protected function get_views() {
 		global $wpdb;
 
 		// Nome da tabela
-		$table_name = $wpdb->prefix . 'sf_pitch_suggetion';
+		$table_name = $wpdb->prefix . $this->table_name;
 
 		// Contar os registros por status
 		$status_counts = $wpdb->get_results("
-			SELECT status, COUNT(*) as count
-			FROM {$table_name}
-			GROUP BY status
-		", OBJECT_K);
+        	SELECT status, COUNT(*) as count
+        	FROM {$table_name}
+        	GROUP BY status
+    	", OBJECT_K);
 
 		// Garantir que os valores inexistentes retornem 0
 		$status_totals = [
 			'all'        => array_sum(wp_list_pluck($status_counts, 'count')),
-			'pending'    => isset($status_counts['pending']) ? $status_counts['pending']->count : 0,
-			'assign'     => isset($status_counts['assign']) ? $status_counts['assign']->count : 0,
-			'refused'    => isset($status_counts['refused']) ? $status_counts['refused']->count : 0,
-			'generated'  => isset($status_counts['generated']) ? $status_counts['generated']->count : 0,
+			'pending'    => $status_counts['pending']->count ?? 0,
+			'assign'     => $status_counts['assign']->count ?? 0,
+			'refused'    => $status_counts['refused']->count ?? 0,
+			'generated'  => $status_counts['generated']->count ?? 0,
 		];
 
-		$current_page = 'story-flow-pitchs';
-		$base_url = admin_url('admin.php');
+		$current_status = sf_retrieve($_GET, 'pitch_status', 'all', 'sanitize_text_field');
 
-		// Obter o pitch_status da URL
-		$current_status = isset($_GET['pitch_status']) ? sanitize_text_field($_GET['pitch_status']) : 'all';
+		$views = [];
 
-		// Gerar os links de status
-		$status_links = [
-			"all"       => $current_status === 'all'
-				? sprintf('%s (%d)', __('All', 'story-flow'), $status_totals['all'])
-				: sprintf(
-					'<a href="%s">%s (%d)</a>',
-					esc_url(add_query_arg(['page' => $current_page, 'pitch_status' => 'all'], $base_url)),
-					__('All', 'story-flow'),
-					$status_totals['all']
-				),
-			"pending"   => $current_status === 'pending'
-				? sprintf('%s (%d)', __('Pending', 'story-flow'), $status_totals['pending'])
-				: sprintf(
-					'<a href="%s">%s (%d)</a>',
-					esc_url(add_query_arg(['page' => $current_page, 'pitch_status' => 'pending'], $base_url)),
-					__('Pending', 'story-flow'),
-					$status_totals['pending']
-				),
-			"assign"    => $current_status === 'assign'
-				? sprintf('%s (%d)', __('Assign', 'story-flow'), $status_totals['assign'])
-				: sprintf(
-					'<a href="%s">%s (%d)</a>',
-					esc_url(add_query_arg(['page' => $current_page, 'pitch_status' => 'assign'], $base_url)),
-					__('Assign', 'story-flow'),
-					$status_totals['assign']
-				),
-			"refused"   => $current_status === 'refused'
-				? sprintf('%s (%d)', __('Refused', 'story-flow'), $status_totals['refused'])
-				: sprintf(
-					'<a href="%s">%s (%d)</a>',
-					esc_url(add_query_arg(['page' => $current_page, 'pitch_status' => 'refused'], $base_url)),
-					__('Refused', 'story-flow'),
-					$status_totals['refused']
-				),
-			"generated" => $current_status === 'generated'
-				? sprintf('%s (%d)', __('News generated', 'story-flow'), $status_totals['generated'])
-				: sprintf(
-					'<a href="%s">%s (%d)</a>',
-					esc_url(add_query_arg(['page' => $current_page, 'pitch_status' => 'generated'], $base_url)),
-					__('News generated', 'story-flow'),
-					$status_totals['generated']
-				),
-		];
+		foreach ($status_totals as $status => $count) {
+			$views[$status] = $this->build_status_view($status, $count, $current_status);
+		}
 
-		return $status_links;
+		return $views;
 	}
 
-	function column_default($item, $column_name)
-	{
-		switch ($column_name) {
-			case 'created_at':
-
-				$timestamp = strtotime($item[$column_name]);
-
-				$date = date_i18n($this->wp_date_format, $timestamp);
-				$time = date_i18n($this->wp_time_format, $timestamp);
-
-				return $date . ' ' . $time;
-			case 'category':
-			case 'topic':
-			case 'main_seo_keyword':
-			case 'status':
-				return ucfirst($item[$column_name]);
-			default:
-				return $item[$column_name];
+	function column_default($item, $column_name) {
+		if (in_array($column_name, ['category', 'topic', 'main_seo_keyword', 'status'], true)) {
+			return ucfirst($item[$column_name]);
 		}
+
+		if ($column_name === 'created_at') {
+			$timestamp = strtotime($item[$column_name]);
+			$date = date_i18n($this->wp_date_format, $timestamp);
+			$time = date_i18n($this->wp_time_format, $timestamp);
+
+			return $date . ' ' . $time;
+		}
+
+		return $item[$column_name];
 	}
 
 	public function column_suggested_pitch( $item ) {
@@ -351,4 +267,91 @@ class Pitch_List_Table extends WP_List_Table {
 
 		return $output;
     }
+
+	private function render_filters() {
+		// Obter os filtros aplicados atualmente
+		$pitch_status = sf_retrieve($_GET, 'pitch_status', 'all', 'sanitize_text_field');
+		$search = sf_retrieve($_POST, 's', '', 'sanitize_text_field');
+		$selected_category = sf_retrieve($_POST, 'cat-filter', '', 'sanitize_text_field');
+		$selected_topic = sf_retrieve($_POST, 'topic-filter', '', 'sanitize_text_field');
+
+		$applied_filters = [
+			'status'               => $pitch_status !== 'all' ? $pitch_status : null,
+			'suggested_pitch LIKE' => !empty($search) ? '%' . esc_sql($search) . '%' : null,
+			'category'             => $selected_category, // Aplicar o filtro de categoria no tópico
+			'topic'                => $selected_topic, // Aplicar o filtro de tópico na categoria
+		];
+
+		// Filtrar categorias com base nos resultados atuais
+		$categories = $this->get_unique_values('category', $applied_filters);
+		$this->render_filter_dropdown('cat-filter', __('All by Category', 'story-flow'), $categories, $selected_category);
+
+		// Filtrar tópicos com base nos resultados atuais
+		$topics = $this->get_unique_values('topic', $applied_filters);
+		$this->render_filter_dropdown('topic-filter', __('All by Topic', 'story-flow'), $topics, $selected_topic);
+	}
+
+	private function render_filter_dropdown($name, $label, $options, $selected) {
+		if ($options) {
+			echo '<select name="' . esc_attr($name) . '">';
+			echo '<option value="">' . esc_html($label) . '</option>';
+			foreach ($options as $option) {
+				$is_selected = $selected === $option ? 'selected="selected"' : '';
+				printf('<option value="%s" %s>%s</option>', esc_attr($option), esc_attr($is_selected), esc_html($option));
+			}
+			echo '</select>';
+		}
+	}
+
+	private function get_view_link($status, $label, $current_status, $count) {
+		$url = add_query_arg(['page' => 'story-flow-pitchs', 'pitch_status' => $status], admin_url('admin.php'));
+		if ($current_status === $status) {
+			return sprintf('%s (%d)', esc_html($label), $count);
+		}
+		return sprintf('<a href="%s">%s (%d)</a>', esc_url($url), esc_html($label), $count);
+	}
+
+	private function build_filters($filters) {
+		global $wpdb;
+
+		$where_clauses = [];
+		foreach ($filters as $column => $value) {
+			if ($value !== null && $value !== '') {
+				if (stripos($column, 'LIKE') !== false) {
+					// Remove " LIKE" do final da coluna para preparar o nome
+					$column = str_replace(' LIKE', '', $column);
+					$where_clauses[] = $wpdb->prepare("{$column} LIKE %s", $value);
+				} else {
+					$where_clauses[] = $wpdb->prepare("{$column} = %s", $value);
+				}
+			}
+		}
+
+		return !empty($where_clauses) ? ' AND ' . implode(' AND ', $where_clauses) : '';
+	}
+
+	private function get_unique_values($column, $filters = []) {
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . $this->table_name;
+
+		// Construir a query para extrair valores únicos com base nos filtros aplicados
+		$query = "SELECT DISTINCT {$column} FROM {$table_name} WHERE 1=1";
+
+		// Adicionar os filtros aplicados
+		$query .= $this->build_filters($filters);
+
+		$query .= " ORDER BY {$column} ASC";
+
+		return $wpdb->get_col($query);
+	}
+
+	private function build_status_view($status, $count, $current_status) {
+		$label = ucfirst($status);
+		$url = add_query_arg(['page' => 'story-flow-pitchs', 'pitch_status' => $status], admin_url('admin.php'));
+
+		return $current_status === $status
+			? sprintf('%s (%d)', esc_html($label), $count)
+			: sprintf('<a href="%s">%s (%d)</a>', esc_url($url), esc_html($label), $count);
+	}
 }
