@@ -40,7 +40,7 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 					main_seo_keyword VARCHAR(255),
 					suggested_pitch TEXT,
 					origin ENUM('manual', 'automattic') DEFAULT 'manual',
-					status ENUM('pending', 'assign', 'refused', 'generated', 'drafted', 'published') DEFAULT 'pending',
+					status ENUM('pending', 'assign', 'refused', 'processing', 'generated', 'published') DEFAULT 'pending',
 					created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 					updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 					INDEX idx_sf_created_status (created_at, status),
