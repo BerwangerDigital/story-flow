@@ -221,52 +221,111 @@ class Pitch_List_Table extends WP_List_Table {
 	}
 
 	function column_default($item, $column_name) {
-		if (in_array($column_name, ['category', 'topic', 'main_seo_keyword', 'status'], true)) {
+		if (in_array($column_name, ['category', 'topic', 'main_seo_keyword'], true)) {
 			return ucfirst($item[$column_name]);
-		}
-
-		if ($column_name === 'created_at') {
-			$timestamp = strtotime($item[$column_name]);
-			$date = date_i18n($this->wp_date_format, $timestamp);
-			$time = date_i18n($this->wp_time_format, $timestamp);
-
-			return $date . ' ' . $time;
 		}
 
 		return $item[$column_name];
 	}
 
-	public function column_suggested_pitch( $item ) {
-        $edit_link	= admin_url( 'post.php?action=edit&amp;post=' .  $item['id']  );
-        $view_link	= get_permalink( $item['id'] );
-        $output		= '';
-		$actions	= [];
+	function column_status($item) {
+		return sprintf('<span style="font-size:24px;font-weight:600;">%s</span>', ucfirst($item['status']));
+	}
 
-		if (('generated' === $item['status']) || ('published' === $item['status'])|| ('drafted' === $item['status'])) {
-        	$output .= esc_html(  $item['suggested_pitch']   );
+	public function column_suggested_pitch($item) {
+		$output = '';
+		$actions = [];
 
-			return $output;
+		$change_status_link = admin_url('admin.php?page=story-flow-pitchs&action=change_status&post=' . $item['id'] . '&status=');
+
+		// Adicionar o título do pitch
+		if ('pending' === $item['status']) {
+			// Exibir título com link de edição
+			$edit_link = admin_url('post.php?action=edit&post=' . $item['id']);
+			$output .= '<strong><a href="' . esc_url($edit_link) . '" class="row-title">' . esc_html($item['suggested_pitch']) . '</a></strong>';
+		} else {
+			// Exibir título como texto simples
+			$output .= '<strong>' . esc_html($item['suggested_pitch']) . '</strong>';
 		}
 
-		$output .= '<strong><a href="' . esc_url( $edit_link ) . '" class="row-title">' . esc_html(  $item['suggested_pitch']   ) . '</a></strong>';
+		// Determinar ações com base no status atual
+		switch ($item['status']) {
+			case 'pending':
+				$actions = [
+					'assign' => sprintf(
+						'<a href="%s">%s</a>',
+						esc_url($change_status_link . 'assign'),
+						esc_html__('Assign', 'story-flow')
+					),
+					'refused' => sprintf(
+						'<a href="%s">%s</a>',
+						esc_url($change_status_link . 'refused'),
+						esc_html__('Refuse', 'story-flow')
+					),
+				];
+				break;
 
-		// Get actions.
-		$actions = array(
-			'edit'   => '<a href="' . esc_url( $edit_link ) . '">' . esc_html__( 'Edit', 'story-flow' ) . '</a>',
-			'assign'   => '<a href="' . esc_url( $view_link ) . '">' . esc_html__( 'Assign', 'story-flow' ) . '</a>',
-			'refused'  => '<a href="' . esc_url( $view_link ) . '">' . esc_html__( 'Refused', 'story-flow' ) . '</a>',
-		);
+			case 'assign':
+				$actions = [
+					'generated' => sprintf(
+						'<a href="%s">%s</a>',
+						esc_url($change_status_link . 'generated'),
+						esc_html__('Generate', 'story-flow')
+					),
+					'refused' => sprintf(
+						'<a href="%s">%s</a>',
+						esc_url($change_status_link . 'refused'),
+						esc_html__('Refuse', 'story-flow')
+					),
+				];
+				break;
 
-		$row_actions = array();
+			case 'refused':
+				$actions = [
+					'pending' => sprintf(
+						'<a href="%s">%s</a>',
+						esc_url($change_status_link . 'pending'),
+						esc_html__('Reopen', 'story-flow')
+					),
+				];
+				break;
 
-		foreach ( $actions as $action => $link ) {
-			$row_actions[] = '<span class="' . esc_attr( $action ) . '">' . $link . '</span>';
+			case 'generated':
+				// Nenhuma ação disponível para status "generated"
+				$actions = [];
+				break;
 		}
 
-		$output .= '<div class="row-actions">' . implode( ' | ', $row_actions ) . '</div>';
+		// Renderizar as ações
+		if (!empty($actions)) {
+			$row_actions = [];
+			foreach ($actions as $action => $link) {
+				$row_actions[] = sprintf('<span class="%s">%s</span>', esc_attr($action), $link);
+			}
+			$output .= '<div class="row-actions">' . implode(' | ', $row_actions) . '</div>';
+		}
 
 		return $output;
-    }
+	}
+
+	function column_created_at($item) {
+		$output = '';
+
+		if (!empty($item['updated_at']) && ($item['updated_at'] != $item['created_at'])) {
+			$timestamp = strtotime($item['updated_at']);
+			$output .= esc_html__('Updated at', 'story-flow') . '<br>';
+		} else {
+			$timestamp = strtotime($item['created_at']);
+			$output .= esc_html__('Created at', 'story-flow') . '<br>';
+		}
+
+		$date = date_i18n($this->wp_date_format, $timestamp);
+		$time = date_i18n($this->wp_time_format, $timestamp);
+
+		$output .= sprintf('%s %s', $date, $time);
+
+		return $output;
+	}
 
 	private function render_filters() {
 		// Obter os filtros aplicados atualmente
@@ -308,6 +367,7 @@ class Pitch_List_Table extends WP_List_Table {
 		if ($current_status === $status) {
 			return sprintf('%s (%d)', esc_html($label), $count);
 		}
+
 		return sprintf('<a href="%s">%s (%d)</a>', esc_url($url), esc_html($label), $count);
 	}
 
