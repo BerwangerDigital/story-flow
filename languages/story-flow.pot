@@ -1,0 +1,162 @@
+# Copyright (C) 2024 Marcelo Berwanger
+# This file is distributed under the same license as the Story Flow package.
+msgid ""
+msgstr ""
+"Project-Id-Version: Story Flow 0.1.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/story-flow\n"
+"POT-Creation-Date: 2024-12-20 12:31:04+00:00\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"PO-Revision-Date: 2024-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"X-Generator: grunt-wp-i18n 0.5.4\n"
+"X-Poedit-KeywordsList: "
+"__;_e;_x:1,2c;_ex:1,2c;_n:1,2;_nx:1,2,4c;_n_noop:1,2;_nx_noop:1,2,3c;esc_"
+"attr__;esc_html__;esc_attr_e;esc_html_e;esc_attr_x:1,2c;esc_html_x:1,2c;\n"
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Poedit-Country: United States\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Poedit-Basepath: ../\n"
+"X-Poedit-SearchPath-0: .\n"
+"X-Poedit-Bookmarks: \n"
+"X-Textdomain-Support: yes\n"
+
+#. Plugin Name of the plugin/theme
+msgid "Story Flow"
+msgstr ""
+
+#: includes/admin/sf-menu-area.php:64
+msgid "Pitch Suggestions"
+msgstr ""
+
+#: includes/admin/sf-menu-area.php:65
+msgid "News Repository"
+msgstr ""
+
+#: includes/admin/sf-menu-area.php:66
+msgid "Manage Prompts"
+msgstr ""
+
+#: includes/admin/sf-menu-area.php:67
+msgid "Settings"
+msgstr ""
+
+#: includes/admin/sf-menu-area.php:159
+msgid "Search Suggestions"
+msgstr ""
+
+#: includes/admin/sf-menu-area.php:171
+#: includes/admin/templates/prompt-add-page.php:68
+msgid "Add New Prompt"
+msgstr ""
+
+#: includes/admin/sf-menu-area.php:178
+msgid "Search Prompts"
+msgstr ""
+
+#: includes/admin/templates/pitch-list-table.php:64
+#: includes/admin/templates/prompt-list-table.php:64
+msgid "Filter by Category"
+msgstr ""
+
+#: includes/admin/templates/pitch-list-table.php:84
+#: includes/admin/templates/prompt-list-table.php:84
+msgid "Filter by Topic"
+msgstr ""
+
+#: includes/admin/templates/pitch-list-table.php:96
+#: includes/admin/templates/prompt-list-table.php:96
+msgid "Filter"
+msgstr ""
+
+#: includes/admin/templates/pitch-list-table.php:258
+#: includes/admin/templates/pitch-list-table.php:262
+msgid "All"
+msgstr ""
+
+#: includes/admin/templates/pitch-list-table.php:266
+#: includes/admin/templates/pitch-list-table.php:270
+msgid "Pending"
+msgstr ""
+
+#: includes/admin/templates/pitch-list-table.php:274
+#: includes/admin/templates/pitch-list-table.php:278
+#: includes/admin/templates/pitch-list-table.php:340
+msgid "Assign"
+msgstr ""
+
+#: includes/admin/templates/pitch-list-table.php:282
+#: includes/admin/templates/pitch-list-table.php:286
+#: includes/admin/templates/pitch-list-table.php:341
+msgid "Refused"
+msgstr ""
+
+#: includes/admin/templates/pitch-list-table.php:290
+#: includes/admin/templates/pitch-list-table.php:294
+msgid "News generated"
+msgstr ""
+
+#: includes/admin/templates/pitch-list-table.php:339
+#: includes/admin/templates/prompt-list-table.php:235
+msgid "Edit"
+msgstr ""
+
+#: includes/admin/templates/prompt-add-page.php:34
+msgid "All fields are required."
+msgstr ""
+
+#: includes/admin/templates/prompt-add-page.php:53
+msgid "Prompt added successfully!"
+msgstr ""
+
+#: includes/admin/templates/prompt-add-page.php:55
+msgid "An error occurred while saving the prompt."
+msgstr ""
+
+#: includes/admin/templates/prompt-add-page.php:73
+#: includes/admin/templates/prompt-list-table.php:112
+msgid "Category"
+msgstr ""
+
+#: includes/admin/templates/prompt-add-page.php:77
+msgid "Select a Category"
+msgstr ""
+
+#: includes/admin/templates/prompt-add-page.php:86
+#: includes/admin/templates/prompt-list-table.php:113
+msgid "Topic"
+msgstr ""
+
+#: includes/admin/templates/prompt-add-page.php:90
+msgid "Select a Topic"
+msgstr ""
+
+#: includes/admin/templates/prompt-add-page.php:99
+#: includes/admin/templates/prompt-list-table.php:111
+msgid "Prompt"
+msgstr ""
+
+#: includes/admin/templates/prompt-add-page.php:106
+msgid "Add Prompt"
+msgstr ""
+
+#. Plugin URI of the plugin/theme
+msgid "https://berwanger.digital/plugins/story-flow/"
+msgstr ""
+
+#. Description of the plugin/theme
+msgid ""
+"A powerful tool to streamline the creation and management of pitch "
+"suggestions for news publishers and blogs to generate a news repository."
+msgstr ""
+
+#. Author of the plugin/theme
+msgid "Marcelo Berwanger"
+msgstr ""
+
+#. Author URI of the plugin/theme
+msgid "https://berwanger.digital"
+msgstr ""
