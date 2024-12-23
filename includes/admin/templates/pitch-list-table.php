@@ -368,6 +368,12 @@ class Pitch_List_Table extends WP_List_Table {
 						esc_attr($nonce),
 						esc_html__('Assign', 'story-flow')
 					),
+					'generated' => sprintf(
+						'<a href="%s&nonce=%s">%s</a>',
+						esc_url($change_status_link . 'generated'),
+						esc_attr($nonce),
+						esc_html__('Generate', 'story-flow')
+					),
 					'refused' => sprintf(
 						'<a href="%s&nonce=%s">%s</a>',
 						esc_url($change_status_link . 'refused'),
