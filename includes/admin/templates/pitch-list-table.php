@@ -7,25 +7,68 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use WP_List_Table;
+use StoryFlow\Queue\Pitch_Queue_Manager;
 
+/**
+ * Class Pitch_List_Table
+ *
+ * Handles the custom list table for managing story pitch suggestions.
+ */
 class Pitch_List_Table extends WP_List_Table {
 
-	// define $table_data property
+	/**
+     * Table data for the list table.
+     *
+     * @var array
+     */
 	private $table_data;
 
-	private $table_name = 'sf_pitch_suggetion';
+	/**
+     * The database table name for pitch suggestions.
+     *
+     * @var string
+     */
+	private $table_name;
 
+	/**
+     * WordPress date format.
+     *
+     * @var string
+     */
 	private $wp_date_format;
 
+	/**
+     * WordPress time format.
+     *
+     * @var string
+     */
 	private $wp_time_format;
 
+	/**
+     * Allowed columns for ordering the list table.
+     *
+     * @const array
+     */
 	private const ALLOWED_ORDERBY_COLUMNS = ['category', 'topic', 'main_seo_keyword', 'status', 'created_at'];
 
 	/**
-    * Constructor, we override the parent to pass our own arguments
-    * We usually focus on three parameters: singular and plural labels, as well as whether the class supports AJAX.
-    */
+     * Valid statuses for pitch suggestions.
+     *
+     * @const array
+     */
+	private const VALID_STATUSES = ['pending', 'assign', 'refused', 'generated'];
+
+    /**
+     * Constructor for the Pitch_List_Table class.
+     *
+     * Sets up the list table, processes actions, and initializes required properties.
+     */
     function __construct() {
+		global $wpdb;
+
+		// Table name
+		$this->table_name = $wpdb->prefix . 'sf_pitch_suggetion';
+
 		$this->wp_date_format = get_option('date_format');
 		$this->wp_time_format = get_option('time_format');
 
@@ -34,12 +77,64 @@ class Pitch_List_Table extends WP_List_Table {
 			'plural'	=> 'sf_list_story_suggestions', // Plural label, also this well be one of the table css class
 			'ajax'		=> false // We won't support Ajax for this table
 		] );
+
+        // Process actions (delete, change status, etc.)
+        $this->process_actions();
 	}
 
-	/**
-	 * Add extra markup in the toolbars before or after the list
-	 * @param string $which, helps you decide if you add the markup after (bottom) or before (top) the list
-	 */
+    /**
+     * Process actions for delete and status changes.
+     */
+    private function process_actions() {
+        $action = sf_retrieve($_GET, 'action', '', 'sanitize_text_field');
+
+        if ($action === 'delete') {
+            $this->process_delete_action();
+        } elseif ($action === 'change_status') {
+            $this->process_change_status();
+        }
+    }
+
+    /**
+     * Process the "Delete" action for a pitch suggestion.
+     */
+    private function process_delete_action() {
+        if (empty($_GET['post']) || empty($_GET['nonce'])) {
+            return;
+        }
+
+        $post_id = absint($_GET['post']);
+        $nonce = $_GET['nonce'];
+
+        // Verify nonce
+        if (!wp_verify_nonce($nonce, 'delete_pitch_' . $post_id)) {
+            wp_die(__('Invalid nonce. Action not allowed.', 'story-flow'));
+        }
+
+        global $wpdb;
+
+        // Delete the record
+        $deleted = $wpdb->delete(
+            $this->table_name,
+            ['id' => $post_id],
+            ['%d']
+        );
+
+        if (false === $deleted) {
+            wp_die(__('Failed to delete the item.', 'story-flow'));
+        }
+
+        // Add a success message
+        add_action('admin_notices', function () {
+            echo '<div id="message" class="notice notice-success is-dismissible"><p>' . esc_html__('Item deleted successfully.', 'story-flow') . '</p></div>';
+        });
+    }
+
+    /**
+     * Add extra markup in the toolbar before or after the list.
+     *
+     * @param string $which Determines the position of the toolbar (top or bottom).
+     */
 	function extra_tablenav($which) {
 		$this->table_data = $this->get_table_data();
 
@@ -51,10 +146,11 @@ class Pitch_List_Table extends WP_List_Table {
 		}
     }
 
-	/**
-	 * Define the columns that are going to be used in the table
-	 * @return array $columns, the array of columns to use with the table
-	 */
+    /**
+     * Define the columns to be displayed in the list table.
+     *
+     * @return array The array of column names.
+     */
 	function get_columns() {
 		return $columns = [
 			'category'			=> 'Category',
@@ -66,10 +162,11 @@ class Pitch_List_Table extends WP_List_Table {
 		];
 	}
 
-	/**
-	 * Decide which columns to activate the sorting functionality on
-	 * @return array $sortable, the array of columns that can be sorted by the user
-	 */
+   /**
+     * Define which columns are sortable in the list table.
+     *
+     * @return array The array of sortable columns.
+     */
 	public function get_sortable_columns() {
 		return $sortable = [
 			'category'			=> ['category', false],
@@ -79,29 +176,31 @@ class Pitch_List_Table extends WP_List_Table {
 		];
 	}
 
-	// Get table data
-	private function get_table_data($per_page = 10, $current_page = 1, $orderby = 'created_at', $order = 'ASC') {
+    /**
+     * Retrieve table data for the list table.
+     *
+     * @param int $per_page    Number of items per page.
+     * @param int $current_page The current page number.
+     * @param string $orderby  Column to order by.
+     * @param string $order    Sorting order (ASC or DESC).
+     * @return array The table data.
+     */
+	private function get_table_data($per_page = 10, $current_page = 1, $orderby = 'id', $order = 'DESC') {
 		global $wpdb;
 
-		$table = $wpdb->prefix . $this->table_name;
-
-		// Filters
 		$pitch_status       = sf_retrieve($_GET, 'pitch_status', 'all', 'sanitize_text_field');
         $category_filter	= sf_retrieve($_POST, 'cat-filter', '', 'sanitize_text_field');
         $topic_filter		= sf_retrieve($_POST, 'topic-filter', '', 'sanitize_text_field');
 		$search				= sf_retrieve($_POST, 's', '', 'sanitize_text_field');
 
-    	// Validar parâmetros de ordenação
-		$orderby = in_array($orderby, self::ALLOWED_ORDERBY_COLUMNS) ? $orderby : 'created_at';
+		$orderby = in_array($orderby, self::ALLOWED_ORDERBY_COLUMNS) ? $orderby : 'id';
 		$order   = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
-    	$order   = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
 
 		if (empty($pitch_status)) {
 			$pitch_status = sf_retrieve($_POST, 'pitch_status', 'all', 'sanitize_text_field');
 		}
 
-		// Base da query
-		$query = "SELECT * FROM {$table} WHERE 1=1";
+		$query = "SELECT * FROM {$this->table_name} WHERE 1=1";
 
 		$filters = [
 			'category'  => $category_filter,
@@ -109,7 +208,6 @@ class Pitch_List_Table extends WP_List_Table {
 			'suggested_pitch LIKE' => !empty($search) ? '%' . $wpdb->esc_like($search) . '%' : null,
 		];
 
-		// Adicionar filtro de status apenas se necessário
 		if ($pitch_status !== 'all') {
 			$filters['status'] = $pitch_status;
 		}
@@ -120,53 +218,45 @@ class Pitch_List_Table extends WP_List_Table {
 		$query .= " ORDER BY {$orderby} {$order}";
 		$query .= $wpdb->prepare(" LIMIT %d OFFSET %d", $per_page, $offset);
 
-		// Retornar os resultados da tabela
 		return $wpdb->get_results($query, ARRAY_A);
 	}
 
 	/**
 	 * Prepare the table with different parameters, pagination, columns and table elements
 	 */
-	function prepare_items() {
-
-		// Definir parâmetros de paginação
+	public function prepare_items() {
 		$per_page = $this->get_items_per_page('elements_per_page', 10);
 		$current_page = $this->get_pagenum();
 
-		// Obter parâmetros de ordenação
-		$orderby = sf_retrieve($_GET, 'orderby', 'created_at', 'sanitize_text_field');
+		$orderby = sf_retrieve($_GET, 'orderby', 'id', 'sanitize_text_field');
 		$order   = sf_retrieve($_GET, 'order', 'asc', 'sanitize_text_field');
 
-		// Obter dados da tabela com paginação e ordenação
 		$this->table_data = $this->get_table_data($per_page, $current_page, $orderby, $order);
 
         $columns = $this->get_columns();
         $hidden = [];
         $sortable = $this->get_sortable_columns();
 		$primary  = 'id';
-        $this->_column_headers = array($columns, $hidden, $sortable, $primary);
+		$this->_column_headers = [$columns, $hidden, $sortable, $primary];
 
-		// Contar o total de itens (sem paginação)
 		$total_items = $this->get_total_items();
 
-		$this->set_pagination_args(array(
-				'total_items' => $total_items, // total number of items
-				'per_page'    => $per_page, // items to show on a page
-				'total_pages' => ceil( $total_items / $per_page ) // use ceil to round up
-		));
+		$this->set_pagination_args([
+			'total_items' => $total_items,
+			'per_page'    => $per_page,
+			'total_pages' => ceil($total_items / $per_page),
+		]);
 
         $this->items = $this->table_data;
  	}
 
-	/**
-	 * Contar o número total de itens na tabela para paginação.
-	 *
-	 * @return int Total de itens.
-	 */
+    /**
+     * Count the total number of items in the database for pagination.
+     *
+     * @return int Total number of items.
+     */
 	private function get_total_items() {
 		global $wpdb;
-
-		$table = $wpdb->prefix . $this->table_name;
 
 		$pitch_status = sf_retrieve($_GET, 'pitch_status', 'all', 'sanitize_text_field');
 
@@ -176,31 +266,30 @@ class Pitch_List_Table extends WP_List_Table {
 			'suggested_pitch LIKE' => !empty($search) ? '%' . $wpdb->esc_like($search) . '%' : null,
 		];
 
-		// Adicionar filtro de status apenas se necessário
 		if ($pitch_status !== 'all') {
 			$filters['status'] = $pitch_status;
 		}
 
-		$query = "SELECT COUNT(*) FROM {$table} WHERE 1=1";
+		$query = "SELECT COUNT(*) FROM {$this->table_name} WHERE 1=1";
 		$query .= $this->build_filters($filters);
 
 		return (int) $wpdb->get_var($query);
 	}
 
+	/**
+     * Render the views (filters by status) at the top of the list table.
+     *
+     * @return array The views for the table.
+     */
 	protected function get_views() {
 		global $wpdb;
 
-		// Nome da tabela
-		$table_name = $wpdb->prefix . $this->table_name;
-
-		// Contar os registros por status
 		$status_counts = $wpdb->get_results("
         	SELECT status, COUNT(*) as count
-        	FROM {$table_name}
+        	FROM {$this->table_name}
         	GROUP BY status
     	", OBJECT_K);
 
-		// Garantir que os valores inexistentes retornem 0
 		$status_totals = [
 			'all'        => array_sum(wp_list_pluck($status_counts, 'count')),
 			'pending'    => $status_counts['pending']->count ?? 0,
@@ -213,13 +302,24 @@ class Pitch_List_Table extends WP_List_Table {
 
 		$views = [];
 
+		echo '<ul class="subsubsub">';
+
 		foreach ($status_totals as $status => $count) {
 			$views[$status] = $this->build_status_view($status, $count, $current_status);
 		}
 
+		echo '</ul>';
+
 		return $views;
 	}
 
+	/**
+     * Default column output if a specific column handler is not defined.
+     *
+     * @param array  $item        The current item.
+     * @param string $column_name The name of the column.
+     * @return string The formatted output for the column.
+     */
 	function column_default($item, $column_name) {
 		if (in_array($column_name, ['category', 'topic', 'main_seo_keyword'], true)) {
 			return ucfirst($item[$column_name]);
@@ -228,75 +328,96 @@ class Pitch_List_Table extends WP_List_Table {
 		return $item[$column_name];
 	}
 
+	/**
+     * Format the "Status" column.
+     *
+     * @param array $item The current item.
+     * @return string The formatted status.
+     */
 	function column_status($item) {
-		return sprintf('<span style="font-size:24px;font-weight:600;">%s</span>', ucfirst($item['status']));
+		return ucfirst($item['status']);
 	}
 
+	/**
+     * Render the "Suggested Pitch" column with actions.
+     *
+     * @param array $item The current item.
+     * @return string The formatted column with actions.
+     */
 	public function column_suggested_pitch($item) {
 		$output = '';
 		$actions = [];
 
+		$nonce = wp_create_nonce('change_pitch_status_' . $item['id']);
 		$change_status_link = admin_url('admin.php?page=story-flow-pitchs&action=change_status&post=' . $item['id'] . '&status=');
 
-		// Adicionar o título do pitch
 		if ('pending' === $item['status']) {
-			// Exibir título com link de edição
 			$edit_link = admin_url('post.php?action=edit&post=' . $item['id']);
 			$output .= '<strong><a href="' . esc_url($edit_link) . '" class="row-title">' . esc_html($item['suggested_pitch']) . '</a></strong>';
 		} else {
-			// Exibir título como texto simples
 			$output .= '<strong>' . esc_html($item['suggested_pitch']) . '</strong>';
 		}
 
-		// Determinar ações com base no status atual
+		// Define actions based on status
 		switch ($item['status']) {
 			case 'pending':
 				$actions = [
 					'assign' => sprintf(
-						'<a href="%s">%s</a>',
+						'<a href="%s&nonce=%s">%s</a>',
 						esc_url($change_status_link . 'assign'),
+						esc_attr($nonce),
 						esc_html__('Assign', 'story-flow')
 					),
 					'refused' => sprintf(
-						'<a href="%s">%s</a>',
+						'<a href="%s&nonce=%s">%s</a>',
 						esc_url($change_status_link . 'refused'),
+						esc_attr($nonce),
 						esc_html__('Refuse', 'story-flow')
 					),
 				];
 				break;
-
 			case 'assign':
 				$actions = [
 					'generated' => sprintf(
-						'<a href="%s">%s</a>',
+						'<a href="%s&nonce=%s">%s</a>',
 						esc_url($change_status_link . 'generated'),
+						esc_attr($nonce),
 						esc_html__('Generate', 'story-flow')
 					),
 					'refused' => sprintf(
-						'<a href="%s">%s</a>',
+						'<a href="%s&nonce=%s">%s</a>',
 						esc_url($change_status_link . 'refused'),
+						esc_attr($nonce),
 						esc_html__('Refuse', 'story-flow')
 					),
 				];
 				break;
-
 			case 'refused':
 				$actions = [
 					'pending' => sprintf(
-						'<a href="%s">%s</a>',
+						'<a href="%s&nonce=%s">%s</a>',
 						esc_url($change_status_link . 'pending'),
+						esc_attr($nonce),
 						esc_html__('Reopen', 'story-flow')
 					),
 				];
 				break;
-
 			case 'generated':
-				// Nenhuma ação disponível para status "generated"
 				$actions = [];
 				break;
 		}
 
-		// Renderizar as ações
+		// Add "Delete" action for "Pending" or "Refused" statuses
+		if (in_array($item['status'], ['pending', 'refused'], true)) {
+			$delete_nonce = wp_create_nonce('delete_pitch_' . $item['id']);
+			$delete_link = admin_url('admin.php?page=story-flow-pitchs&action=delete&post=' . $item['id'] . '&nonce=' . $delete_nonce);
+			$actions['delete'] = sprintf(
+				'<a href="%s" class="delete">%s</a>',
+				esc_url($delete_link),
+				esc_html__('Delete', 'story-flow')
+			);
+		}
+
 		if (!empty($actions)) {
 			$row_actions = [];
 			foreach ($actions as $action => $link) {
@@ -308,6 +429,12 @@ class Pitch_List_Table extends WP_List_Table {
 		return $output;
 	}
 
+	/**
+     * Format the "Created At" column with formatted timestamps.
+     *
+     * @param array $item The current item.
+     * @return string The formatted date and time.
+     */
 	function column_created_at($item) {
 		$output = '';
 
@@ -315,7 +442,7 @@ class Pitch_List_Table extends WP_List_Table {
 			$timestamp = strtotime($item['updated_at']);
 			$output .= esc_html__('Updated at', 'story-flow') . '<br>';
 		} else {
-			$timestamp = strtotime($item['created_at']);
+			$timestamp = strtotime($item['updated_at']);
 			$output .= esc_html__('Created at', 'story-flow') . '<br>';
 		}
 
@@ -327,8 +454,10 @@ class Pitch_List_Table extends WP_List_Table {
 		return $output;
 	}
 
+	/**
+     * Render the filters above the table for filtering data.
+     */
 	private function render_filters() {
-		// Obter os filtros aplicados atualmente
 		$pitch_status = sf_retrieve($_GET, 'pitch_status', 'all', 'sanitize_text_field');
 		$search = sf_retrieve($_POST, 's', '', 'sanitize_text_field');
 		$selected_category = sf_retrieve($_POST, 'cat-filter', '', 'sanitize_text_field');
@@ -337,19 +466,27 @@ class Pitch_List_Table extends WP_List_Table {
 		$applied_filters = [
 			'status'               => $pitch_status !== 'all' ? $pitch_status : null,
 			'suggested_pitch LIKE' => !empty($search) ? '%' . esc_sql($search) . '%' : null,
-			'category'             => $selected_category, // Aplicar o filtro de categoria no tópico
-			'topic'                => $selected_topic, // Aplicar o filtro de tópico na categoria
+			'category'             => $selected_category,
+			'topic'                => $selected_topic,
 		];
 
-		// Filtrar categorias com base nos resultados atuais
+		// Filter categories based on the current data
 		$categories = $this->get_unique_values('category', $applied_filters);
 		$this->render_filter_dropdown('cat-filter', __('All by Category', 'story-flow'), $categories, $selected_category);
 
-		// Filtrar tópicos com base nos resultados atuais
+		// Filter topics based on the current data
 		$topics = $this->get_unique_values('topic', $applied_filters);
 		$this->render_filter_dropdown('topic-filter', __('All by Topic', 'story-flow'), $topics, $selected_topic);
 	}
 
+	/**
+     * Render a dropdown filter with given options.
+     *
+     * @param string $name   The name of the filter input field.
+     * @param string $label  The label for the dropdown.
+     * @param array  $options The list of options for the dropdown.
+     * @param string $selected The selected value.
+     */
 	private function render_filter_dropdown($name, $label, $options, $selected) {
 		if ($options) {
 			echo '<select name="' . esc_attr($name) . '">';
@@ -362,6 +499,16 @@ class Pitch_List_Table extends WP_List_Table {
 		}
 	}
 
+	/**
+     * Generate a link for views with counts and labels.
+     *
+     * @param string $status        The status of the items (e.g., pending, assign).
+     * @param string $label         The label for the status.
+     * @param string $current_status The currently selected status.
+     * @param int    $count         The count of items for this status.
+     *
+     * @return string The generated HTML link for the status view.
+     */
 	private function get_view_link($status, $label, $current_status, $count) {
 		$url = add_query_arg(['page' => 'story-flow-pitchs', 'pitch_status' => $status], admin_url('admin.php'));
 		if ($current_status === $status) {
@@ -371,6 +518,13 @@ class Pitch_List_Table extends WP_List_Table {
 		return sprintf('<a href="%s">%s (%d)</a>', esc_url($url), esc_html($label), $count);
 	}
 
+	/**
+     * Build a WHERE clause for SQL queries based on the filters provided.
+     *
+     * @param array $filters Associative array of filters with column names as keys.
+     *
+     * @return string The SQL WHERE clause.
+     */
 	private function build_filters($filters) {
 		global $wpdb;
 
@@ -378,7 +532,6 @@ class Pitch_List_Table extends WP_List_Table {
 		foreach ($filters as $column => $value) {
 			if ($value !== null && $value !== '') {
 				if (stripos($column, 'LIKE') !== false) {
-					// Remove " LIKE" do final da coluna para preparar o nome
 					$column = str_replace(' LIKE', '', $column);
 					$where_clauses[] = $wpdb->prepare("{$column} LIKE %s", $value);
 				} else {
@@ -390,28 +543,102 @@ class Pitch_List_Table extends WP_List_Table {
 		return !empty($where_clauses) ? ' AND ' . implode(' AND ', $where_clauses) : '';
 	}
 
+	/**
+     * Retrieve unique values for a specific column based on filters.
+     *
+     * @param string $column  The column name to retrieve unique values for.
+     * @param array  $filters The filters to apply to the query.
+     *
+     * @return array List of unique values for the column.
+     */
 	private function get_unique_values($column, $filters = []) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . $this->table_name;
-
-		// Construir a query para extrair valores únicos com base nos filtros aplicados
-		$query = "SELECT DISTINCT {$column} FROM {$table_name} WHERE 1=1";
-
-		// Adicionar os filtros aplicados
+		$query  = "SELECT DISTINCT {$column} FROM {$this->table_name} WHERE 1=1";
 		$query .= $this->build_filters($filters);
-
 		$query .= " ORDER BY {$column} ASC";
 
 		return $wpdb->get_col($query);
 	}
 
+	/**
+     * Build a view link for a specific status with a count.
+     *
+     * @param string $status         The status identifier.
+     * @param int    $count          The count of items for this status.
+     * @param string $current_status The currently selected status.
+     *
+     * @return string The HTML for the view link.
+     */
 	private function build_status_view($status, $count, $current_status) {
 		$label = ucfirst($status);
 		$url = add_query_arg(['page' => 'story-flow-pitchs', 'pitch_status' => $status], admin_url('admin.php'));
 
 		return $current_status === $status
-			? sprintf('%s (%d)', esc_html($label), $count)
-			: sprintf('<a href="%s">%s (%d)</a>', esc_url($url), esc_html($label), $count);
+			? sprintf('<li><a href="%s" class="current">%s <span class="count">(%d)</span></a>', esc_url($url), esc_html($label), $count) // sprintf('%s (%d)', esc_html($label), $count)
+			: sprintf('<li><a href="%s">%s <span class="count">(%d)</span></a></li>', esc_url($url), esc_html($label), $count);
+	}
+
+	/**
+	 * Processes the "Change Status" action for a record.
+	 *
+	 * This method verifies the request, validates the parameters,
+	 * updates the status of the given record in the database, and,
+	 * if applicable, queues the record for further processing.
+	 *
+	 * @return void
+	 */
+	private function process_change_status() {
+
+		$action = sf_retrieve($_GET, 'action', '', 'sanitize_text_field');
+
+		if ($action !== 'change_status') {
+			return;
+		}
+
+		if (empty($_GET['post']) || empty($_GET['status']) || empty($_GET['nonce'])) {
+			error_log('Parâmetros ausentes ao tentar mudar status.');
+			return;
+		}
+
+		$post_id = absint($_GET['post']);
+		$new_status = sanitize_text_field($_GET['status']);
+		$nonce = $_GET['nonce'];
+
+		if (!wp_verify_nonce($nonce, 'change_pitch_status_' . $post_id)) {
+			wp_die(__('Invalid nonce. Action not allowed.', 'story-flow'));
+		}
+
+		$valid_statuses = ['pending', 'assign', 'refused', 'generated'];
+		if (!in_array($new_status, $valid_statuses, true)) {
+			wp_die(__('Invalid status value.', 'story-flow'));
+		}
+
+		global $wpdb;
+
+		$updated = $wpdb->update(
+			$this->table_name,
+			['status' => $new_status, 'updated_at' => current_time('mysql')],
+			['id' => $post_id],
+			['%s', '%s'],
+			['%d']
+		);
+
+		if (false === $updated) {
+			wp_die(__('Failed to update the status.', 'story-flow'));
+		}
+
+		// If the new status is "generated", add the record to the processing queue
+		if ('generated' === $new_status) {
+			$queue_manager = new Pitch_Queue_Manager();
+			$queue_manager->add_to_queue($post_id);
+		}
+
+		// Display a success message in the admin interface
+		$this->display_success_message();
+	}
+
+	private function display_success_message() {
+		echo '<div id="message" class="notice is-dismissible updated"><p>' . esc_html__('Status updated successfully.', 'story-flow') . '</p></div>';
 	}
 }
