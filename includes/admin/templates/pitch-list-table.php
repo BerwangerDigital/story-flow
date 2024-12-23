@@ -67,7 +67,7 @@ class Pitch_List_Table extends WP_List_Table {
 		global $wpdb;
 
 		// Table name
-		$this->table_name = $wpdb->prefix . 'sf_pitch_suggetion';
+		$this->table_name = $wpdb->prefix . SF__TABLE_PITCH_SUGGESTIONS;
 
 		$this->wp_date_format = get_option('date_format');
 		$this->wp_time_format = get_option('time_format');

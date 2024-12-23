@@ -22,7 +22,7 @@ defined( 'SF__PLUGIN_DIRPATH' ) || define( 'SF__PLUGIN_DIRPATH', __DIR__ );
 defined( 'SF__PLUGIN_URL' ) || define( 'SF__PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // Constant definitions required for operation
-// require_once SF__PLUGIN_DIRPATH . '/constants/loader.php';
+require_once SF__PLUGIN_DIRPATH . '/constants/loader.php';
 
 // Autoloaders
 require_once SF__PLUGIN_DIRPATH . '/utilities/autoload.php';
