@@ -372,7 +372,7 @@ class Pitch_List_Table extends WP_List_Table {
 						'<a href="%s&nonce=%s">%s</a>',
 						esc_url($change_status_link . 'generated'),
 						esc_attr($nonce),
-						esc_html__('Generate', 'story-flow')
+						esc_html__('Generate Now', 'story-flow')
 					),
 					'refused' => sprintf(
 						'<a href="%s&nonce=%s">%s</a>',
@@ -388,7 +388,7 @@ class Pitch_List_Table extends WP_List_Table {
 						'<a href="%s&nonce=%s">%s</a>',
 						esc_url($change_status_link . 'generated'),
 						esc_attr($nonce),
-						esc_html__('Generate', 'story-flow')
+						esc_html__('Generate Now', 'story-flow')
 					),
 					'refused' => sprintf(
 						'<a href="%s&nonce=%s">%s</a>',
@@ -615,7 +615,7 @@ class Pitch_List_Table extends WP_List_Table {
 			wp_die(__('Invalid nonce. Action not allowed.', 'story-flow'));
 		}
 
-		$valid_statuses = ['pending', 'assign', 'refused', 'generated'];
+		$valid_statuses = ['pending', 'assign', 'refused', 'processing', 'generated'];
 		if (!in_array($new_status, $valid_statuses, true)) {
 			wp_die(__('Invalid status value.', 'story-flow'));
 		}
@@ -635,10 +635,13 @@ class Pitch_List_Table extends WP_List_Table {
 		}
 
 		// If the new status is "generated", add the record to the processing queue
-		if ('generated' === $new_status) {
-			$queue_manager = new Pitch_Queue_Manager();
-			$queue_manager->add_to_queue($post_id);
-		}
+        $queue_manager = new Pitch_Queue_Manager();
+
+        if ('assign' === $new_status) {
+            $queue_manager->add_to_queue($post_id);
+        } elseif ('generated' === $new_status) {
+            $queue_manager->add_to_queue_with_priority($post_id);
+        }
 
 		// Display a success message in the admin interface
 		$this->display_success_message();

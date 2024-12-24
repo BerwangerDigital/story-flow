@@ -31,6 +31,7 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 
 			$migrations = new DB_Migrations();
 
+			// Register Pitch Suggestions Table.
 			$migrations->register_table(
 				SF__TABLE_PITCH_SUGGESTIONS,
 				"CREATE TABLE {$wpdb->prefix}" . SF__TABLE_PITCH_SUGGESTIONS . " (
@@ -53,6 +54,7 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 				) " . $migrations->get_charset_collate() . ";"
 			);
 
+			// Register Prompts Table
 			$migrations->register_table(
 				SF__TABLE_PROMPTS,
 				"CREATE TABLE {$wpdb->prefix}" . SF__TABLE_PROMPTS . " (
@@ -69,6 +71,7 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 				) " . $migrations->get_charset_collate() . ";"
 			);
 
+			// Register Queue Table.
 			$migrations->register_table(
 				SF__TABLE_QUEUE,
 				"CREATE TABLE {$wpdb->prefix}" . SF__TABLE_QUEUE . " (
@@ -77,6 +80,23 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 					status ENUM('pending', 'processing', 'completed', 'failed') DEFAULT 'pending',
 					created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 					updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+				) " . $migrations->get_charset_collate() . ";"
+			);
+
+			// Register Generated Content Table.
+			$migrations->register_table(
+				SF__TABLE_GENERATED_CONTENT,
+				"CREATE TABLE {$wpdb->prefix}" . SF__TABLE_GENERATED_CONTENT . " (
+					id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+					content LONGTEXT NOT NULL,
+					status ENUM('pending', 'approved', 'refused', 'discarded') DEFAULT 'pending',
+					created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+					validated_at DATETIME NULL,
+					generated_by BIGINT(20) UNSIGNED NULL,
+					metadata LONGTEXT NULL,
+					INDEX idx_sf_generated_status (status),
+					INDEX idx_sf_generated_created (created_at),
+					INDEX idx_sf_generated_validated (validated_at)
 				) " . $migrations->get_charset_collate() . ";"
 			);
 
