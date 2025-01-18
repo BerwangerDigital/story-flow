@@ -4,7 +4,7 @@ namespace StoryFlow\Queue;
 
 use StoryFlow\AI\OpenAIStrategyInterface;
 
-class QueueProcessor {
+class Queue_Processor {
 
     /**
      * @var OpenAIStrategyInterface The strategy for connecting to OpenAI or external API.

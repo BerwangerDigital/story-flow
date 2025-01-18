@@ -1,6 +1,6 @@
 <?php
 /**
- * Managing database migrations in WordPress.
+ * Managing database migrations and scheduled tasks in WordPress.
  *
  * @package StoryFlow
  */
@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use \StoryFlow\Admin\SF_Menu_Area;
 use \StoryFlow\Database\DB_Migrations;
+use \StoryFlow\Queue\Queue_Processor;
 
 if ( ! class_exists( 'SF_Activation' ) ) {
 	class SF_Activation
@@ -24,8 +25,14 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 
 			// Initialize admin area.
 			( new SF_Menu_Area() )->init();
+
+            // Hook for processing the queue
+            add_action('sf_process_queue_event', [$this, 'process_queue']);
 		}
 
+        /**
+         * Runs on plugin activation.
+         */
 		public function activate() {
 			global $wpdb;
 
@@ -46,11 +53,11 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 					updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 					INDEX idx_sf_created_status (created_at, status),
 					INDEX idx_sf_updated_status (updated_at, status),
-					INDEX idx_sf_pitch_category (category), -- Índice completo na categoria
-					INDEX idx_sf_pitch_topic (topic), -- Índice completo no tópico
-					INDEX idx_sf_pitch_category_topic (category, topic), -- Índice composto em categoria e tópico
-					FULLTEXT INDEX idx_sf_pitch_suggested_pitch (suggested_pitch), -- Índice FULLTEXT para busca no campo suggested_pitch
-					UNIQUE idx_sf_unique_pitch (category, topic, main_seo_keyword, suggested_pitch(255)) -- Índice único mantendo prefixo no suggested_pitch
+					INDEX idx_sf_pitch_category (category),
+					INDEX idx_sf_pitch_topic (topic),
+					INDEX idx_sf_pitch_category_topic (category, topic),
+					FULLTEXT INDEX idx_sf_pitch_suggested_pitch (suggested_pitch),
+					UNIQUE idx_sf_unique_pitch (category, topic, main_seo_keyword, suggested_pitch(255))
 				) " . $migrations->get_charset_collate() . ";"
 			);
 
@@ -59,6 +66,7 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 				SF__TABLE_PROMPTS,
 				"CREATE TABLE {$wpdb->prefix}" . SF__TABLE_PROMPTS . " (
 					id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+					pillar ENUM('sport', 'strategic-content', 'partner-content', 'proprietary-content') DEFAULT NULL,
 					category VARCHAR(255) NOT NULL,
 					topic VARCHAR(255) DEFAULT NULL,
 					prompt TEXT NOT NULL,
@@ -67,7 +75,7 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 					INDEX idx_sf_prompt_category (category),
 					INDEX idx_sf_prompt_topic (topic),
 					FULLTEXT INDEX idx_sf_prompt_prompt (prompt),
-					UNIQUE idx_sf_unique_prompt (category, topic)
+					UNIQUE idx_sf_unique_pillar_category_topic (pillar, category, topic)
 				) " . $migrations->get_charset_collate() . ";"
 			);
 
@@ -83,7 +91,7 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 				) " . $migrations->get_charset_collate() . ";"
 			);
 
-			// Register Generated Content Table.
+			// Register Generated Content Table
 			$migrations->register_table(
 				SF__TABLE_GENERATED_CONTENT,
 				"CREATE TABLE {$wpdb->prefix}" . SF__TABLE_GENERATED_CONTENT . " (
@@ -102,10 +110,41 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 
 			// Run the creation of all registered tables
 			$migrations->migrate();
+
+            // Schedule the cron event for processing the queue
+            if (!wp_next_scheduled('sf_process_queue_event')) {
+                wp_schedule_event(time(), 'sf_five_minutes', 'sf_process_queue_event');
+            }
 		}
 
-		public function deactivate() {
-			//error_log(print_r('deactivate executed',true));
-		}
-	}
+        /**
+         * Runs on plugin deactivation.
+         */
+        public function deactivate() {
+            // Unschedule the cron event
+            $timestamp = wp_next_scheduled('sf_process_queue_event');
+            if ($timestamp) {
+                wp_unschedule_event($timestamp, 'sf_process_queue_event');
+            }
+        }
+
+        /**
+         * Processes the queue on the scheduled event.
+         */
+        public function process_queue() {
+            $processor = new Queue_Processor();
+            $processor->process_queue();
+        }
+    }
 }
+
+/**
+ * Add custom interval for 15 minutes.
+ */
+add_filter('cron_schedules', function ($schedules) {
+    $schedules['sf_five_minutes'] = [
+        'interval' => 5 * 60, // 15 minutes in seconds
+        'display'  => __('Every Five Minutes', 'story-flow')
+    ];
+    return $schedules;
+});
