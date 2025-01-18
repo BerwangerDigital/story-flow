@@ -15,7 +15,7 @@ use StoryFlow\SF_Core;
 use StoryFlow\Admin\Templates\Pitch_List_Table;
 use StoryFlow\Admin\Templates\Prompt_List_Table;
 use StoryFlow\Admin\Templates\News_List_Table;
-use StoryFlow\Admin\Templates\Prompt_Add_Page;
+use StoryFlow\Admin\Templates\Prompt_Form_Page;
 use StoryFlow\Admin\Templates\Settings_Form_Page;
 
 if ( ! class_exists( 'SF_Menu_Area' ) ) {
@@ -35,7 +35,7 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 		 *
 		 * @var array
 		 */
-		public static $admin_pages_registered = [ 'pitchs', 'news', 'prompts', 'settings' ];
+		public static $admin_pages_registered = [ 'pitchs', 'prompts', 'news', 'settings' ];
 
 		public function init() {
 			// Add the options page.
@@ -64,6 +64,10 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 
 			// Dynamically defined submenus
 			foreach (self::$admin_pages_registered as $slug) {
+				if ($slug === 'news') {
+					continue;
+				}
+
 				add_submenu_page(
 					self::SLUG,
 					esc_html__($this->get_page_title($slug), 'story-flow'),
@@ -76,6 +80,15 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 
 			// Remove duplicate submenu pointing to the main menu.
 			remove_submenu_page(self::SLUG, self::SLUG);
+
+			add_submenu_page(
+				'edit.php',
+				__('News Repository', 'story-flow'),
+				__('News Repository', 'story-flow'),
+				'manage_options',
+				self::SLUG . '-' . 'news',
+				[ $this, 'display' ]
+			);
 		}
 
 		/**
@@ -126,19 +139,19 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 
 			if (!$this->is_admin_page()) return;
 
-			$page_slug = str_replace(self::SLUG . '-', '', sf_retrieve($_GET, 'page', false, 'sanitize_key'));
-			$page_handler = $this->load_page_handler($page_slug);
+			$page		= sf_retrieve($_GET, 'page', false, 'sanitize_key' );
+			$action		= sf_retrieve($_GET, 'action', false, 'sanitize_key' );
+			$page_slug	= str_replace(self::SLUG . '-', '', $page);
 
-			$page	= sf_retrieve($_GET, 'page', false, 'sanitize_key' );
-			$action = sf_retrieve($_GET, 'action', false, 'sanitize_key' );
+			$page_handler = $this->load_page_handler($page_slug);
 
 			echo '<div class="wrap story-flow__container">';
 
 			$title = $this->get_title_admin_page(str_replace(self::SLUG . '-', '', $page), $action);
-			printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, 'story-flow'));
 
 			switch ( $page_slug ) {
 				case 'pitchs':
+					printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, 'story-flow'));
 					?>
 					<a href="#" class="page-title-action">Add New Suggestion</a>
 					<a href="#" class="page-title-action">Import CSV</a>
@@ -158,6 +171,7 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 					<?php
 					break;
 				case 'settings':
+					printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, 'story-flow'));
 					echo '<hr class="wp-header-end">';
 					echo '<form method="post">';
 
@@ -167,7 +181,12 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 					break;
 				case 'prompts':
 
-					if (!$action) {
+					if (in_array($action, ['add-form', 'update-form'])) {
+						printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__('Add New AI Prompt Rule', 'story-flow'));
+						$page_form = new Prompt_Form_Page;
+						$page_form->display();
+					} else {
+						printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, 'story-flow'));
 						printf('<a href="%s" class="page-title-action">%s</a>', esc_url(admin_url('admin.php?page=' . self::SLUG . '-prompts&action=add-form')), esc_html__('Add New Prompt', 'story-flow'));
 
 						echo '<hr class="wp-header-end">';
@@ -178,8 +197,6 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 						$page_handler->display();
 
 						echo '</form>';
-					} else {
-						$page_handler->display();
 					}
 
 					break;
@@ -225,7 +242,7 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 			$titles = [
 				'pitchs'   => 'Pitch Suggestions',
 				'news'     => 'News Repository',
-				'prompts'  => 'Manage Prompts',
+				'prompts'  => 'Manage AI Prompt Rules',
 				'settings' => 'Settings',
 			];
 
