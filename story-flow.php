@@ -7,33 +7,46 @@
  * Author URI:      https://berwanger.digital
  * Text Domain:     story-flow
  * Domain Path:     /languages
- * Version:         0.1.0
+ * Requires PHP:    7.4
+ * Version:         1.0.0
  *
  * @package         StoryFlow
  */
 
-if ( ! defined( 'ABSPATH' ) ) {
+if ( !defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-define( 'SF_VERSION', '0.1.0' );
-
-defined( 'SF__PLUGIN_DIRPATH' ) || define( 'SF__PLUGIN_DIRPATH', __DIR__ );
-defined( 'SF__PLUGIN_URL' ) || define( 'SF__PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'SF_PLUGIN_DIRPATH', __DIR__ );
+define( 'SF_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // Constant definitions required for operation
-require_once SF__PLUGIN_DIRPATH . '/constants/loader.php';
+require_once SF_PLUGIN_DIRPATH . '/constants/loader.php';
+
+// Load text domain
+add_action(
+	'init',
+	static function () {
+		load_plugin_textdomain( SF_TEXTDOMAIN, false, SF_DOMAIN_PATH );
+	}
+);
 
 // Autoloaders
-require_once SF__PLUGIN_DIRPATH . '/utilities/autoload.php';
+require_once SF_PLUGIN_DIRPATH . '/utilities/autoload.php';
 
 // Composer
-if ( file_exists( SF__PLUGIN_DIRPATH . '/vendor/autoload.php' ) ) {
-    require_once SF__PLUGIN_DIRPATH . '/vendor/autoload.php';
+if ( file_exists( SF_PLUGIN_DIRPATH . '/vendor/autoload.php' ) ) {
+    require_once SF_PLUGIN_DIRPATH . '/vendor/autoload.php';
 }
 
 // Utilities
-require_once SF__PLUGIN_DIRPATH . '/utilities/functions.php';
+require_once SF_PLUGIN_DIRPATH . '/utilities/functions.php';
 
-// Initialization
-new \StoryFlow\Core\SF_Activation( __FILE__ );
+// Activate the plugin
+add_action(
+	'plugins_loaded',
+	static function () {
+		// Initialization
+		new \StoryFlow\Core\SF_Activation( __FILE__ );
+	}
+);

@@ -20,7 +20,7 @@ class Pitch_Queue_Manager {
         global $wpdb;
 
         // Table name
-        $this->table_name = $wpdb->prefix . SF__TABLE_QUEUE;
+        $this->table_name = $wpdb->prefix . SF_TABLE_QUEUE;
     }
 
     /**
@@ -69,7 +69,13 @@ class Pitch_Queue_Manager {
         return $count > 0;
     }
 
-	public function add_to_queue_with_priority($pitch_id) {
+    /**
+     * Add a pitch to the queue with priority.
+     *
+     * @param int $pitch_id The ID of the pitch to add.
+     * @return void
+     */
+    public function add_to_queue_with_priority($pitch_id) {
         global $wpdb;
 
         $exists = $wpdb->get_var(
@@ -97,6 +103,27 @@ class Pitch_Queue_Manager {
                 ],
                 ['%d', '%s', '%s']
             );
+        }
+    }
+
+    /**
+     * Checks for `assign` status and enqueues them.
+     *
+     * @return void
+     */
+    public function check_assign_and_enqueue() {
+        global $wpdb;
+        $pitch_table = $wpdb->prefix . SF_TABLE_PITCH_SUGGESTIONS;
+
+        $assignments = $wpdb->get_results(
+            $wpdb->prepare( "SELECT id FROM $pitch_table WHERE status = %s", 'assign' )
+        );
+
+        foreach ( $assignments as $assignment ) {
+            $this->add_to_queue( $assignment->id );
+
+            // Update the status to processing
+            $wpdb->update( $pitch_table, [ 'status' => 'processing' ], [ 'id' => $assignment->id ] );
         }
     }
 }

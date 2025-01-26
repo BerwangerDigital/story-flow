@@ -13,8 +13,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use StoryFlow\SF_Core;
 use StoryFlow\Admin\Templates\Pitch_List_Table;
+use StoryFlow\Admin\Templates\Pitch_Form_Page;
+use StoryFlow\Admin\Templates\Pitch_Form_Import_Page;
 use StoryFlow\Admin\Templates\Prompt_List_Table;
-use StoryFlow\Admin\Templates\News_List_Table;
 use StoryFlow\Admin\Templates\Prompt_Form_Page;
 use StoryFlow\Admin\Templates\Settings_Form_Page;
 
@@ -35,7 +36,7 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 		 *
 		 * @var array
 		 */
-		public static $admin_pages_registered = [ 'pitchs', 'prompts', 'news', 'settings' ];
+		public static $admin_pages_registered = [ 'pitchs', 'prompts', 'settings' ];
 
 		public function init() {
 			// Add the options page.
@@ -53,8 +54,8 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 		 */
 		public function add_admin_menu_items() {
 			add_menu_page(
-				esc_html__('Story Flow', 'story-flow'),
-				esc_html__('Story Flow', 'story-flow'),
+				esc_html__('Matérias IA', SF_TEXTDOMAIN),
+				esc_html__('Matérias IA', SF_TEXTDOMAIN),
 				SF_Core::get_capability(),
 				self::SLUG,
 				[ $this, 'display' ],
@@ -64,14 +65,10 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 
 			// Dynamically defined submenus
 			foreach (self::$admin_pages_registered as $slug) {
-				if ($slug === 'news') {
-					continue;
-				}
-
 				add_submenu_page(
 					self::SLUG,
-					esc_html__($this->get_page_title($slug), 'story-flow'),
-					esc_html__($this->get_page_title($slug), 'story-flow'),
+					esc_html__($this->get_page_title($slug), SF_TEXTDOMAIN),
+					esc_html__($this->get_page_title($slug), SF_TEXTDOMAIN),
 					SF_Core::get_capability(),
 					self::SLUG . '-' . $slug,
 					[ $this, 'display' ]
@@ -81,14 +78,6 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 			// Remove duplicate submenu pointing to the main menu.
 			remove_submenu_page(self::SLUG, self::SLUG);
 
-			add_submenu_page(
-				'edit.php',
-				__('News Repository', 'story-flow'),
-				__('News Repository', 'story-flow'),
-				'manage_options',
-				self::SLUG . '-' . 'news',
-				[ $this, 'display' ]
-			);
 		}
 
 		/**
@@ -151,27 +140,37 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 
 			switch ( $page_slug ) {
 				case 'pitchs':
-					printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, 'story-flow'));
-					?>
-					<a href="#" class="page-title-action">Add New Suggestion</a>
-					<a href="#" class="page-title-action">Import CSV</a>
-					<hr class="wp-header-end">
+					if (in_array($action, ['add-form', 'update-form'])) {
+						printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__('Adicionar Novo Assunto', SF_TEXTDOMAIN));
+						$page_form = new Pitch_Form_Page;
+						$page_form->display();
+					} elseif (in_array($action, ['import-form'])) {
+						printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__('Importar CSV', SF_TEXTDOMAIN));
+						$page_form = new Pitch_Form_Import_Page;
+						$page_form->display();
+					} else {
+						printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, SF_TEXTDOMAIN));
+						printf('<a href="%s" class="page-title-action">%s</a>', esc_url(admin_url('admin.php?page=' . self::SLUG . '-pitchs&action=add-form')), esc_html__('Adicionar Novo', SF_TEXTDOMAIN));
+						printf('<a href="%s" class="page-title-action">%s</a>', esc_url(admin_url('admin.php?page=' . self::SLUG . '-pitchs&action=import-form')), esc_html__('Importar CSV', SF_TEXTDOMAIN));
+						?>
+						<hr class="wp-header-end">
 
-					<form method="post">
-					<?php
+						<form method="post">
+						<?php
 
-					//$wp_list_table = new Pitch_List_Table();
-					$page_handler->views();
-					$page_handler->prepare_items();
-					$page_handler->search_box(esc_html__('Search Suggestions', 'story-flow'), 'pitch-suggestion-form');
-					$page_handler->display();
+						//$wp_list_table = new Pitch_List_Table();
+						$page_handler->views();
+						$page_handler->prepare_items();
+						$page_handler->search_box(esc_html__('Pesquisar Assuntos', SF_TEXTDOMAIN), 'pitch-suggestion-form');
+						$page_handler->display();
 
-					?>
-					</form>
-					<?php
+						?>
+						</form>
+						<?php
+					}
 					break;
 				case 'settings':
-					printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, 'story-flow'));
+					printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, SF_TEXTDOMAIN));
 					echo '<hr class="wp-header-end">';
 					echo '<form method="post">';
 
@@ -182,33 +181,23 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 				case 'prompts':
 
 					if (in_array($action, ['add-form', 'update-form'])) {
-						printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__('Add New AI Prompt Rule', 'story-flow'));
+						printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__('Adicionar Nova Regra de Prompt', SF_TEXTDOMAIN));
 						$page_form = new Prompt_Form_Page;
 						$page_form->display();
 					} else {
-						printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, 'story-flow'));
-						printf('<a href="%s" class="page-title-action">%s</a>', esc_url(admin_url('admin.php?page=' . self::SLUG . '-prompts&action=add-form')), esc_html__('Add New Prompt', 'story-flow'));
+						printf("<h1 class='wp-heading-inline'>%s</h1>", esc_html__($title, SF_TEXTDOMAIN));
+						printf('<a href="%s" class="page-title-action">%s</a>', esc_url(admin_url('admin.php?page=' . self::SLUG . '-prompts&action=add-form')), esc_html__('Adicionar Novo', SF_TEXTDOMAIN));
 
 						echo '<hr class="wp-header-end">';
 						echo '<form method="post">';
 
 						$page_handler->prepare_items();
-						$page_handler->search_box(__('Search Prompts', 'story-flow'), 'prompt-search');
+						$page_handler->search_box(__('Pesquisar Prompts', SF_TEXTDOMAIN), 'prompt-search');
 						$page_handler->display();
 
 						echo '</form>';
 					}
 
-					break;
-				case 'news':
-					echo '<hr class="wp-header-end">';
-					echo '<form method="post">';
-
-					$page_handler->prepare_items();
-					$page_handler->search_box(__('Search Prompts', 'story-flow'), 'news-search');
-					$page_handler->display();
-
-					echo '</form>';
 					break;
 			}
 			?>
@@ -240,30 +229,27 @@ if ( ! class_exists( 'SF_Menu_Area' ) ) {
 
 		public function get_title_admin_page($slug) {
 			$titles = [
-				'pitchs'   => 'Pitch Suggestions',
-				'news'     => 'News Repository',
-				'prompts'  => 'Manage AI Prompt Rules',
-				'settings' => 'Settings',
+				'pitchs'   => 'Assuntos',
+				'prompts'  => 'Regras de Prompt',
+				'settings' => 'Configurações',
 			];
 
-			return $titles[$slug] ?? esc_html__('Story Flow', 'story-flow');
+			return $titles[$slug] ?? esc_html__('Story Flow', SF_TEXTDOMAIN);
 		}
 
 		private function get_page_title($slug) {
 			$titles = [
-				'pitchs'   => __('Pitch Suggestions', 'story-flow'),
-				'news'     => __('News Repository', 'story-flow'),
-				'prompts'  => __('Manage Prompts', 'story-flow'),
-				'settings' => __('Settings', 'story-flow'),
+				'pitchs'   => __('Assuntos', SF_TEXTDOMAIN),
+				'prompts'  => __('Regras de Prompt', SF_TEXTDOMAIN),
+				'settings' => __('Configurações', SF_TEXTDOMAIN),
 			];
 
-			return $titles[$slug] ?? __('Unknown', 'story-flow');
+			return $titles[$slug] ?? __('Unknown', SF_TEXTDOMAIN);
 		}
 
 		private function load_page_handler($page_slug) {
 			$page_handlers = [
 				'pitchs'   => Pitch_List_Table::class,
-				'news'     => News_List_Table::class,
 				'prompts'  => Prompt_List_Table::class,
 				'settings' => Settings_Form_Page::class,
 			];

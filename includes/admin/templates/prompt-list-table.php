@@ -97,20 +97,12 @@ class Prompt_List_Table extends WP_List_Table {
 
         if ($prompt_id > 0) {
             $wpdb->delete($this->table_name, ['id' => $prompt_id], ['%d']);
-			wp_redirect(add_query_arg('deleted', '1', admin_url('admin.php?page=story-flow-prompts')));
-            exit;
+
+			echo '<div class="notice notice-success is-dismissible">
+				<p>' . esc_html__('Regra de Prompt apagada com sucesso.', SF_TEXTDOMAIN) . '</p>
+			</div>';
         }
     }
-
-	public function display_notices() {
-		$deleted		= sf_retrieve($_GET, 'deleted', 0, 'sanitize_text_field');
-
-		if (isset($deleted) && $deleted === '1') {
-			echo '<div class="notice notice-success is-dismissible">
-				<p>' . esc_html__('Prompt deleted successfully.', 'story-flow') . '</p>
-			</div>';
-		}
-	}
 
     /**
      * Define the columns to be displayed in the list table.
@@ -119,10 +111,9 @@ class Prompt_List_Table extends WP_List_Table {
      */
     public function get_columns() {
         return [
-            'prompt'   => __('AI Prompt', 'story-flow'),
-            'pillar'   => __('Pillar', 'story-flow'),
-            'category' => __('Category', 'story-flow'),
-            'topic'    => __('Topic', 'story-flow'),
+            'prompt'   => __('AI Prompt', SF_TEXTDOMAIN),
+            'category' => __('Categoria', SF_TEXTDOMAIN),
+            'topic'    => __('Tópico', SF_TEXTDOMAIN),
         ];
     }
 
@@ -133,9 +124,8 @@ class Prompt_List_Table extends WP_List_Table {
      */
     public function get_sortable_columns() {
         return [
-            'pillar'   => ['pillar', true],
-            'category' => ['category', true],
-            'topic'    => ['topic', true],
+            'category' => ['category', false],
+            'topic'    => ['topic', false],
         ];
     }
 
@@ -176,7 +166,6 @@ class Prompt_List_Table extends WP_List_Table {
         global $wpdb;
 
         $filters = [
-            'pillar'   => sf_retrieve($_POST, 'pillar-filter', '', 'sanitize_text_field'),
             'category' => sf_retrieve($_POST, 'cat-filter', '', 'sanitize_text_field'),
             'topic'    => sf_retrieve($_POST, 'topic-filter', '', 'sanitize_text_field'),
             'search'   => sf_retrieve($_POST, 's', '', 'sanitize_text_field'),
@@ -185,15 +174,11 @@ class Prompt_List_Table extends WP_List_Table {
         $orderby = sf_retrieve($_GET, 'orderby', 'id', 'sanitize_text_field');
         $order = sf_retrieve($_GET, 'order', 'ASC', 'sanitize_text_field');
 
-        $valid_orderby = ['pillar', 'category', 'topic', 'id'];
+        $valid_orderby = ['category', 'topic', 'id'];
         $orderby = in_array($orderby, $valid_orderby, true) ? $orderby : 'id';
         $order = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
 
         $query = "SELECT * FROM {$this->table_name} WHERE 1=1";
-
-        if (!empty($filters['pillar'])) {
-            $query .= $wpdb->prepare(" AND pillar = %s", $filters['pillar']);
-        }
 
         if (!empty($filters['category'])) {
             $query .= $wpdb->prepare(" AND category = %s", $filters['category']);
@@ -227,31 +212,15 @@ class Prompt_List_Table extends WP_List_Table {
         $categories = $wpdb->get_col("SELECT DISTINCT category FROM {$this->table_name} WHERE category IS NOT NULL AND category != '' ORDER BY category ASC");
         $topics = $wpdb->get_col("SELECT DISTINCT topic FROM {$this->table_name} WHERE topic IS NOT NULL AND topic != '' ORDER BY topic ASC");
 
-        $selected_pillar = sf_retrieve($_POST, 'pillar-filter', '', 'sanitize_text_field');
         $selected_category = sf_retrieve($_POST, 'cat-filter', '', 'sanitize_text_field');
         $selected_topic = sf_retrieve($_POST, 'topic-filter', '', 'sanitize_text_field');
 
         echo '<div class="alignleft actions bulkactions">';
 
-        // Pillar filter
-        echo '<select name="pillar-filter">';
-        echo '<option value="">' . esc_html__('Filter by Pillar', 'story-flow') . '</option>';
-        $pillars = [
-            'sport' => __('Esporte', 'story-flow'),
-            'strategic-content' => __('Conteúdo Estratégico', 'story-flow'),
-            'partner-content' => __('Parceiros', 'story-flow'),
-            'proprietary-content' => __('Conteúdo Proprietário', 'story-flow'),
-        ];
-        foreach ($pillars as $key => $label) {
-            $selected = selected($selected_pillar, $key, false);
-            echo "<option value='" . esc_attr($key) . "' {$selected}>" . esc_html($label) . "</option>";
-        }
-        echo '</select>';
-
         // Category filter
         if (!empty($categories)) {
             echo '<select name="cat-filter">';
-            echo '<option value="">' . esc_html__('Filter by Category', 'story-flow') . '</option>';
+            echo '<option value="">' . esc_html__('Todos por Categoria', SF_TEXTDOMAIN) . '</option>';
             foreach ($categories as $category) {
                 $selected = selected($selected_category, $category, false);
                 echo "<option value='" . esc_attr($category) . "' {$selected}>" . esc_html($category) . "</option>";
@@ -262,7 +231,7 @@ class Prompt_List_Table extends WP_List_Table {
         // Topic filter
         if (!empty($topics)) {
             echo '<select name="topic-filter">';
-            echo '<option value="">' . esc_html__('Filter by Topic', 'story-flow') . '</option>';
+            echo '<option value="">' . esc_html__('Todos por Tópico', SF_TEXTDOMAIN) . '</option>';
             foreach ($topics as $topic) {
                 $selected = selected($selected_topic, $topic, false);
                 echo "<option value='" . esc_attr($topic) . "' {$selected}>" . esc_html($topic) . "</option>";
@@ -271,7 +240,7 @@ class Prompt_List_Table extends WP_List_Table {
         }
 
         if (!empty($categories) || !empty($topics)) {
-            echo '<button type="submit" class="button">' . esc_html__('Filter', 'story-flow') . '</button>';
+            echo '<button type="submit" class="button">' . esc_html__('Filtrar', SF_TEXTDOMAIN) . '</button>';
         }
 
         echo '</div>';
@@ -285,10 +254,6 @@ class Prompt_List_Table extends WP_List_Table {
      * @return string The formatted column value.
      */
     public function column_default($item, $column_name) {
-        if ($column_name === 'pillar') {
-            return $this->format_pillar($item['pillar']);
-        }
-
         return isset($item[$column_name]) ? esc_html($item[$column_name]) : '';
     }
 
@@ -303,8 +268,8 @@ class Prompt_List_Table extends WP_List_Table {
         $actions = [
             'edit' => sprintf(
                 '<a href="%s">%s</a>',
-                esc_url(admin_url('admin.php?page=story-flow-prompts&action=edit&prompt_id=' . $item['id'])),
-                __('Edit', 'story-flow')
+                esc_url(admin_url('admin.php?page=story-flow-prompts&action=update-form&prompt_id=' . $item['id'])),
+                __('Editar', SF_TEXTDOMAIN)
             ),
             'delete' => sprintf(
                 '<a href="%s">%s</a>',
@@ -314,27 +279,10 @@ class Prompt_List_Table extends WP_List_Table {
                         'delete_prompt_' . $item['id']
                     )
                 ),
-                __('Delete', 'story-flow')
+                __('Apagar', SF_TEXTDOMAIN)
             ),
         ];
 
         return $output . $this->row_actions($actions);
-    }
-
-    /**
-     * Format the pillar column with user-friendly labels.
-     *
-     * @param string $pillar The pillar value from the database.
-     * @return string The formatted pillar label.
-     */
-    private function format_pillar($pillar) {
-        $pillars = [
-            'sport' => __('Esporte', 'story-flow'),
-            'strategic-content' => __('Conteúdo Estratégico', 'story-flow'),
-            'partner-content' => __('Parceiros', 'story-flow'),
-            'proprietary-content' => __('Conteúdo Proprietário', 'story-flow'),
-        ];
-
-        return isset($pillars[$pillar]) ? $pillars[$pillar] : __('Unknown', 'story-flow');
     }
 }

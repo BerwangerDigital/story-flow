@@ -2,129 +2,155 @@
 
 namespace StoryFlow\Admin\Templates;
 
-if ( ! defined( 'ABSPATH' ) ) {
+if (!defined('ABSPATH')) {
     exit;
 }
 
 use WP_List_Table;
 
-/**
- * Class News_List_Table
- *
- * Handles the custom list table for managing AI-generated content for review.
- */
 class News_List_Table extends WP_List_Table {
 
     private $table_data;
     private $table_name;
-    // private $wp_date_format;
-    // private $wp_time_format;
 
-    private const ALLOWED_ORDERBY_COLUMNS = ['post_title', 'post_date', 'post_modified'];
-    // // private const VALID_STATUSES = ['pending', 'approved', 'refused'];
+    private const ALLOWED_ORDERBY_COLUMNS = ['post_title', 'post_date'];
 
     public function __construct() {
         global $wpdb;
 
         $this->table_name = $wpdb->prefix . 'posts';
-    //     $this->wp_date_format = get_option('date_format');
-    //     $this->wp_time_format = get_option('time_format');
 
         parent::__construct([
             'singular' => 'sf_generated_news',
             'plural'   => 'sf_generated_news_list',
             'ajax'     => false,
         ]);
-
-    //     $this->process_actions();
     }
-
-    // private function process_actions() {
-    //     $action = sf_retrieve($_GET, 'action', '', 'sanitize_text_field');
-
-    //     if ($action === 'delete') {
-    //         $this->process_delete_action();
-    //     } elseif ($action === 'change_status') {
-    //         $this->process_change_status();
-    //     }
-    // }
-
-    // private function process_delete_action() {
-    //     if (empty($_GET['post']) || empty($_GET['nonce'])) {
-    //         return;
-    //     }
-
-    //     $post_id = absint($_GET['post']);
-    //     $nonce = $_GET['nonce'];
-
-    //     if (!wp_verify_nonce($nonce, 'delete_generated_content_' . $post_id)) {
-    //         wp_die(__('Invalid nonce. Action not allowed.', 'story-flow'));
-    //     }
-
-    //     global $wpdb;
-
-    //     $deleted = $wpdb->delete(
-    //         $this->table_name,
-    //         ['ID' => $post_id],
-    //         ['%d']
-    //     );
-
-    //     if (false === $deleted) {
-    //         wp_die(__('Failed to delete the item.', 'story-flow'));
-    //     }
-
-    //     add_action('admin_notices', function () {
-    //         echo '<div id="message" class="notice notice-success is-dismissible"><p>' . esc_html__('Item deleted successfully.', 'story-flow') . '</p></div>';
-    //     });
-    // }
 
     public function get_columns() {
         return [
-            'post_title'         => __('Title', 'story-flow'),
-            'post_date'    => __('Date', 'story-flow'),
+            'post_title' => __('Título', SF_TEXTDOMAIN),
+            'pillar'     => __('Pilar', SF_TEXTDOMAIN),
+            'post_date'  => __('Data', SF_TEXTDOMAIN),
         ];
     }
 
     public function get_sortable_columns() {
         return [
-            'post_title'         => ['post_title', true],
-            'post_date'    => ['post_date', true],
+            'post_title' => ['post_title', true],
+            'post_date'  => ['post_date', true],
         ];
     }
 
-	private function get_table_data($per_page = 10, $current_page = 1, $orderby = 'post_date', $order = 'DESC') {
-		global $wpdb;
+    /**
+     * Render the filters for quick access to pillars above the table.
+     */
+    public function extra_tablenav($which) {
+        if ($which === 'top') {
+            $current_pillar = isset($_GET['pillar']) ? sanitize_text_field($_GET['pillar']) : '';
+            $pillars = $this->get_fixed_pillar_values();
 
-		$orderby = in_array($orderby, self::ALLOWED_ORDERBY_COLUMNS) ? $orderby : 'post_date';
-		$order = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
+            echo '<div class="alignleft actions">';
+            echo '<a href="' . esc_url(remove_query_arg('pillar')) . '" class="' . ($current_pillar === '' ? 'current' : '') . '">' . __('Todos conteúdos', SF_TEXTDOMAIN) . ' (' . $this->get_pillar_total() . ')</a>';
 
-		$query = "SELECT * FROM {$this->table_name} WHERE (post_status = 'draft' OR post_status = 'publish') AND post_type = 'post'";
+            foreach ($pillars as $slug => $label) {
+                $url = add_query_arg('pillar', urlencode($slug));
+                $class = ($current_pillar === $slug) ? 'current' : '';
+                echo '<a href="' . esc_url($url) . '" class="' . esc_attr($class) . '">' . esc_html($label) . ' (' . $this->get_pillar_total($slug) . ')</a>';
+            }
 
-		$offset = ($current_page - 1) * $per_page;
-		$query .= " ORDER BY {$orderby} {$order}";
-		$query .= $wpdb->prepare(" LIMIT %d OFFSET %d", $per_page, $offset);
+            echo '</div>';
+        }
+    }
 
-		return $wpdb->get_results($query, ARRAY_A);
-	}
+    private function get_table_data($per_page = 10, $current_page = 1, $orderby = 'post_date', $order = 'DESC') {
+        global $wpdb;
 
-    // private function get_total_items() {
-    //     global $wpdb;
+        $orderby = in_array($orderby, self::ALLOWED_ORDERBY_COLUMNS) ? $orderby : 'post_date';
+        $order = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
 
-    //     $status_filter = sf_retrieve($_GET, 'status', '', 'sanitize_text_field');
-    //     $search = sf_retrieve($_POST, 's', '', 'sanitize_text_field');
+        $pillar_filter = isset($_GET['pillar']) ? sanitize_text_field($_GET['pillar']) : '';
 
-    //     $query = "SELECT COUNT(*) FROM {$this->table_name} WHERE 1=1";
+        $query = "
+            SELECT p.*, pm_pillar.meta_value AS pillar
+            FROM {$this->table_name} p
+            INNER JOIN {$wpdb->prefix}postmeta pm
+                ON p.ID = pm.post_id
+            LEFT JOIN {$wpdb->prefix}postmeta pm_pillar
+                ON p.ID = pm_pillar.post_id AND pm_pillar.meta_key = '_pillar'
+            WHERE
+                p.post_type = 'post'
+                AND (p.post_status = 'draft' OR p.post_status = 'publish')
+                AND pm.meta_key = '_generated_by_ai'
+                AND pm.meta_value = 'true'
+        ";
 
-    //     if (!empty($status_filter)) {
-    //         $query .= $wpdb->prepare(" AND status = %s", $status_filter);
-    //     }
+        if ($pillar_filter) {
+            $query .= $wpdb->prepare(" AND pm_pillar.meta_value = %s", $pillar_filter);
+        }
 
-    //     if (!empty($search)) {
-    //         $query .= $wpdb->prepare(" AND title LIKE %s", '%' . $wpdb->esc_like($search) . '%');
-    //     }
+        $offset = ($current_page - 1) * $per_page;
+        $query .= " ORDER BY {$orderby} {$order}";
+        $query .= $wpdb->prepare(" LIMIT %d OFFSET %d", $per_page, $offset);
 
-        // return (int) $wpdb->get_var($query);
-    // }
+        return $wpdb->get_results($query, ARRAY_A);
+    }
+
+    private function get_total_items() {
+        global $wpdb;
+
+        $pillar_filter = isset($_GET['pillar']) ? sanitize_text_field($_GET['pillar']) : '';
+
+        $query = "
+            SELECT COUNT(*)
+            FROM {$this->table_name} p
+            INNER JOIN {$wpdb->prefix}postmeta pm
+                ON p.ID = pm.post_id
+            LEFT JOIN {$wpdb->prefix}postmeta pm_pillar
+                ON p.ID = pm_pillar.post_id AND pm_pillar.meta_key = '_pillar'
+            WHERE
+                p.post_type = 'post'
+                AND (p.post_status = 'draft' OR p.post_status = 'publish')
+                AND pm.meta_key = '_generated_by_ai'
+                AND pm.meta_value = 'true'
+        ";
+
+        if ($pillar_filter) {
+            $query .= $wpdb->prepare(" AND pm_pillar.meta_value = %s", $pillar_filter);
+        }
+
+        return (int) $wpdb->get_var($query);
+    }
+
+    /**
+     * Get total count of items for a specific pillar.
+     *
+     * @param string|null $pillar_slug The slug of the pillar to filter by.
+     * @return int The total count of items.
+     */
+    private function get_pillar_total($pillar_slug = null) {
+        global $wpdb;
+
+        $query = "
+            SELECT COUNT(*)
+            FROM {$this->table_name} p
+            INNER JOIN {$wpdb->prefix}postmeta pm
+                ON p.ID = pm.post_id
+            LEFT JOIN {$wpdb->prefix}postmeta pm_pillar
+                ON p.ID = pm_pillar.post_id AND pm_pillar.meta_key = '_pillar'
+            WHERE
+                p.post_type = 'post'
+                AND (p.post_status = 'draft' OR p.post_status = 'publish')
+                AND pm.meta_key = '_generated_by_ai'
+                AND pm.meta_value = 'true'
+        ";
+
+        if ($pillar_slug) {
+            $query .= $wpdb->prepare(" AND pm_pillar.meta_value = %s", $pillar_slug);
+        }
+
+        return (int) $wpdb->get_var($query);
+    }
 
     public function prepare_items() {
         $per_page = $this->get_items_per_page('sf_generated_news_per_page', 10);
@@ -144,7 +170,7 @@ class News_List_Table extends WP_List_Table {
 
         $this->set_pagination_args([
             'total_items' => $total_items,
-            'per_page' => $per_page,
+            'per_page'    => $per_page,
             'total_pages' => ceil($total_items / $per_page),
         ]);
 
@@ -152,19 +178,26 @@ class News_List_Table extends WP_List_Table {
     }
 
     public function column_post_title($item) {
-		$edit_link = get_edit_post_link($item['ID']);
-		$publish_nonce = wp_create_nonce('publish_generated_content_' . $item['ID']);
-		$publish_link = admin_url('edit.php?page=news-repository&action=publish&post=' . $item['ID'] . '&nonce=' . $publish_nonce);
+        $edit_link = get_edit_post_link($item['ID']);
+        return sprintf('<a href="%s"><strong>%s</strong></a>', esc_url($edit_link), esc_html($item['post_title']));
+    }
 
-		$delete_nonce = wp_create_nonce('delete_generated_content_' . $item['ID']);
-		$delete_link = admin_url('admin.php?page=news-repository&action=delete&post=' . $item['ID'] . '&nonce=' . $delete_nonce);
+    public function column_pillar($item) {
+        $pillars = $this->get_fixed_pillar_values();
+        $pillar_slug = $item['pillar'] ?? '';
+        return isset($pillars[$pillar_slug]) ? esc_html($pillars[$pillar_slug]) : __('Desconhecido', SF_TEXTDOMAIN);
+    }
 
-		$actions = [
-			'edit'    => sprintf('<a href="%s">%s</a>', esc_url($edit_link), __('Edit', 'story-flow')),
-			'publish' => sprintf('<a href="%s">%s</a>', esc_url($publish_link), __('Publish', 'story-flow')),
-			'delete'  => sprintf('<a href="%s" class="delete">%s</a>', esc_url($delete_link), __('Delete', 'story-flow')),
-		];
+    public function column_post_date($item) {
+        return esc_html(date('Y-m-d H:i:s', strtotime($item['post_date'])));
+    }
 
-		return sprintf('<a href="%s"><strong>%s</strong></a> %s',  esc_url($edit_link), esc_html($item['post_title']), $this->row_actions($actions));
-	}
+    private function get_fixed_pillar_values() {
+        return [
+            'sport' => __('Conteúdo Esporte', SF_TEXTDOMAIN),
+            'strategic-content' => __('Conteúdo Estratégico', SF_TEXTDOMAIN),
+            'partner-content' => __('Conteúdo Parceiros', SF_TEXTDOMAIN),
+            'proprietary-content' => __('Conteúdo Proprietário', SF_TEXTDOMAIN),
+        ];
+    }
 }

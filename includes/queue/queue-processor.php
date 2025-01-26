@@ -16,7 +16,9 @@ class Queue_Processor {
 
     private $queue_table;
     private $generated_content_table;
+	private $pitch_table;
     private $openai_client;
+	private $batch_size = 5;
 
     /**
      * Constructor.
@@ -25,24 +27,14 @@ class Queue_Processor {
     public function __construct() {
         global $wpdb;
 
-        $this->queue_table = $wpdb->prefix . SF__TABLE_QUEUE;
-        $this->generated_content_table = $wpdb->prefix . SF__TABLE_GENERATED_CONTENT;
+        $this->queue_table = $wpdb->prefix . SF_TABLE_QUEUE;
+		$this->pitch_table = $wpdb->prefix . SF_TABLE_PITCH_SUGGESTIONS;
 
-        // $api_key = get_option('sf_openai_api_key'); // Assuming the OpenAI API key is stored in options
-        //$api_key = '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';
-		$api_key = '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';
-		if (!$api_key) {
-            throw new \Exception(__('OpenAI API key is not set.', 'story-flow'));
+		if (!CONFIGURATION__OPENAI__APIKEY) {
+            throw new \Exception(__('OpenAI API key is not set.', SF_TEXTDOMAIN));
         }
 
-        // $this->openai_client = OpenAIClient::factory([
-        //     'api_key' => $api_key,
-        // ]);
-
-		//$this->openai_client = OpenAIClient::client($api_key, null, 'ai-sgm');
-
-		$this->openai_client = \OpenAI::client($api_key);
-
+		$this->openai_client = \OpenAI::client(CONFIGURATION__OPENAI__APIKEY);
     }
 
     /**
@@ -51,55 +43,78 @@ class Queue_Processor {
     public function process_queue() {
         global $wpdb;
 
-		error_log('Processing queue...');
-
         // Fetch the next batch of items from the queue
         $items = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT * FROM {$this->queue_table} WHERE status = %s ORDER BY created_at ASC LIMIT %d",
                 'pending',
-                1 // Process in batches of 5
+                $this->batch_size
             )
         );
-
-		error_log('Items found: ' . count($items));
 
         foreach ($items as $item) {
             try {
                 // Mark the item as "processing"
-                //$this->update_queue_status($item->id, 'processing');
+                $this->update_queue_status($item->id, 'processing');
 
-                // Retrieve prompt details
-                $prompt = $this->get_prompt_for_pitch($item->pitch_id);
+				// Fetch the pitch details
+				$pitch_details = $wpdb->get_row(
+					$wpdb->prepare(
+						"SELECT * FROM {$this->pitch_table} WHERE id = %d",
+						$item->pitch_id
+					)
+				);
+
+				if (!$pitch_details) {
+					throw new \Exception(__('Pitch details not found.', SF_TEXTDOMAIN));
+				}
+
+                // Fetch the prompt
+                $prompt = $this->get_prompt_for_pitch($item->pitch_id) ?: $this->get_default_prompt($item->pitch_id);
+
                 if (!$prompt) {
-                    $prompt = $this->get_default_prompt();
+                    throw new \Exception(__('No valid prompt available.', SF_TEXTDOMAIN));
                 }
 
-                if (!$prompt) {
-                    throw new \Exception(__('No valid prompt available for processing.', 'story-flow'));
-                }
-
-				error_log('Send prompt to OpenAI and get response...');
-				error_log(print_r($prompt, true));
-
-                // Send prompt to OpenAI and get response
-                $response = $this->send_to_openai($prompt);
-
-				error_log(print_r($response, true));
-				error_log('Save generated content...');
+                // Generate content using OpenAI
+                $content = $this->send_to_openai($prompt);
 
                 // Save the generated content
-                $this->save_generated_content($response, $item->pitch_id);
+                $this->save_generated_content($content, $item->pitch_id);
 
-                // Mark the item as "completed"
-                //$this->update_queue_status($item->id, 'completed');
+				if (!$content) {
+                    throw new \Exception(__('Generated content is empty.', SF_TEXTDOMAIN));
+                }
+
+                // Update statuses
+                $this->update_queue_status($item->id, 'completed');
+				$this->update_pitch_status($item->pitch_id, 'generated');
+
             } catch (\Exception $e) {
                 // Handle failure
-                //$this->update_queue_status($item->id, 'failed');
-                error_log(sprintf(__('Queue processing error: %s', 'story-flow'), $e->getMessage()));
+                $this->update_queue_status($item->id, 'failed');
+                error_log(sprintf(__('Queue processing error: %s', SF_TEXTDOMAIN), $e->getMessage()));
             }
         }
     }
+
+    /**
+     * Updates the status of a pitch in the database.
+     *
+     * @param int $pitch_id The pitch ID.
+     * @param string $status The new status.
+     */
+	private function update_pitch_status($pitch_id, $status) {
+		global $wpdb;
+		$wpdb->update(
+			$this->pitch_table,
+			['status' => $status, 'updated_at' => current_time('mysql')],
+			['id' => $pitch_id],
+			['%s', '%s'],
+			['%d']
+		);
+	}
+
 
     /**
      * Updates the status of a queue item.
@@ -118,8 +133,8 @@ class Queue_Processor {
         );
     }
 
-	/**
-	 * Retrieves the appropriate prompt for a pitch based on its category or topic and replaces placeholders.
+/**
+	 * Retrieves the appropriate prompt for a pitch based on its category and topic.
 	 *
 	 * @param int $pitch_id The pitch ID.
 	 * @return string|null The generated prompt with replaced placeholders, or null if not found.
@@ -130,7 +145,7 @@ class Queue_Processor {
 		// Retrieve pitch details
 		$pitch = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT category, topic, suggested_pitch, main_seo_keyword FROM {$wpdb->prefix}" . SF__TABLE_PITCH_SUGGESTIONS . " WHERE id = %d",
+				"SELECT category, topic, suggested_pitch, main_seo_keyword FROM {$wpdb->prefix}" . SF_TABLE_PITCH_SUGGESTIONS . " WHERE id = %d",
 				$pitch_id
 			)
 		);
@@ -139,16 +154,24 @@ class Queue_Processor {
 			return null;
 		}
 
-		// Retrieve the most specific prompt (category + topic, fallback to category only)
+		// Priority 1: Category + Topic
 		$prompt_template = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT prompt FROM {$wpdb->prefix}" . SF__TABLE_PROMPTS . "
-				WHERE category = %s AND (topic = %s OR topic IS NULL)
-				ORDER BY topic DESC LIMIT 1",
+				"SELECT prompt FROM {$wpdb->prefix}" . SF_TABLE_PROMPTS . " WHERE category = %s AND topic = %s LIMIT 1",
 				$pitch->category,
 				$pitch->topic
 			)
 		);
+
+		// Priority 2: Category
+		if (!$prompt_template) {
+			$prompt_template = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT prompt FROM {$wpdb->prefix}" . SF_TABLE_PROMPTS . " WHERE category = %s AND topic IS NULL LIMIT 1",
+					$pitch->category
+				)
+			);
+		}
 
 		if (!$prompt_template) {
 			return null;
@@ -190,8 +213,31 @@ class Queue_Processor {
      *
      * @return string|null The default prompt, or null if not set.
      */
-    private function get_default_prompt() {
-        return get_option('sf_default_prompt', null);
+    private function get_default_prompt($pitch_id) {
+		global $wpdb;
+
+		// Retrieve pitch details
+		$pitch = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT category, topic, suggested_pitch, main_seo_keyword FROM {$wpdb->prefix}" . SF_TABLE_PITCH_SUGGESTIONS . " WHERE id = %d",
+				$pitch_id
+			)
+		);
+
+		if (!$pitch) {
+			return null;
+		}
+
+		// Prepare data for placeholder replacement
+		$data = [
+			'pitch' => $pitch->suggested_pitch,
+			'keywords' => $pitch->main_seo_keyword,
+			'topic' => $pitch->topic,
+		];
+
+		$prompt_template = get_option('story_flow_default_prompt', null);
+
+        return $this->prepare_prompt($prompt_template, $data);
     }
 
 	/**
@@ -201,51 +247,99 @@ class Queue_Processor {
 	 * @return string The generated content from OpenAI.
 	 */
 	private function send_to_openai($prompt) {
-		$response = $this->openai_client->chat()->create([
-			'model' => 'gpt-3.5-turbo', // Use 'gpt-3.5-turbo' se preferir menor custo
+
+		$system_prompt = get_option('story_flow_default_prompt', '');
+
+		// Step 1: Generate the body of the post
+		$response_body = $this->openai_client->chat()->create([
+			'model' => 'gpt-4',
 			'messages' => [
-				['role' => 'system', 'content' => 'Você é um assistente que escreve textos jornalísticos claros e informativos.'],
-				['role' => 'user', 'content' => $prompt],
+				['role' => 'system', 'content' => $system_prompt],
+				['role' => 'user', 'content' => 'Escreva somente o corpo da matéria em texto puro conforme as instruções: ' . $prompt],
 			],
-			'max_tokens' => 1300,
+			'max_tokens' => 1500,
 			'temperature' => 0.5,
 			'top_p' => 0.9,
 			'frequency_penalty' => 0.2,
 			'presence_penalty' => 0.3,
 		]);
 
-		return trim($response['choices'][0]['message']['content'] ?? '');
+		$body = $response_body['choices'][0]['message']['content'] ?? null;
 
-		// $response = $this->openai_client->completions()->create([
-		// 	'model' => 'gpt-4',
-		// 	'prompt' => $prompt,
-		// 	'max_tokens' => 1300, // Sufficient for detailed articles
-		// 	'temperature' => 0.5, // Lower for factual accuracy
-		// 	'top_p' => 0.9, // Balanced variety
-		// 	'frequency_penalty' => 0.2, // Reduce repetition
-		// 	'presence_penalty' => 0.3, // Encourage topic expansion
-		// ]);
+		if (!$body) {
+			return null; // Exit early if no body is generated
+		}
 
-		// return trim($response['choices'][0]['text'] ?? '');
+		// Step 2: Generate the title based on the body
+		$response_title = $this->openai_client->chat()->create([
+			'model' => 'gpt-4',
+			'messages' => [
+				['role' => 'system', 'content' => 'Você é um assistente especializado em geração de títulos atrativos e claros para SEO'],
+				['role' => 'assistant', 'content' => $body],
+				['role' => 'user', 'content' => 'Com base no texto enviado, gere um título curto e claro para o artigo, que provoque a curiosidade do leitor. Utilize em caixa-alta apenas a primeira letra do título.'],
+			],
+			'max_tokens' => 250
+		]);
+
+		$title = $response_title['choices'][0]['message']['content'] ?? null;
+
+		if (!$title) {
+			return null; // Exit early if no title is generated
+		}
+
+		if (substr($title, 0, 1) === '"' || substr($title, 0, 1) === "'") {
+			$title = substr($title, 1);
+		}
+
+		if (substr($title, -1) === '"' || substr($title, -1) === "'") {
+			$title = substr($title, 0, -1);
+		}
+
+		// Step 3: Generate the SEO description based on the body
+		$response_seo = $this->openai_client->chat()->create([
+			'model' => 'gpt-4',
+			'messages' => [
+				['role' => 'system', 'content' => 'Você é um assistente especializado em descrições curtas e otimizadas para SEO.'],
+				['role' => 'assistant', 'content' => $body],
+				['role' => 'user', 'content' => 'Com base no texto acima, crie uma descrição otimizada para SEO com até 160 caracteres.'],
+			]
+		]);
+
+		$seo_description = $response_seo['choices'][0]['message']['content'] ?? null;
+
+		if (!$seo_description) {
+			return null; // Exit early if no SEO description is generated
+		}
+
+		return [
+			'title' => trim($title),
+			'body' => trim($body),
+			'seo_description' => trim($seo_description),
+		];
 	}
-
 
 	/**
 	 * Saves the generated content as a normal post and links it to the pitch in the database.
 	 *
-	 * @param string $content The generated content.
+	 * @param array $content The generated content.
 	 * @param int $pitch_id The pitch ID associated with the content.
 	 */
 	private function save_generated_content($content, $pitch_id) {
 		global $wpdb;
 
+		if (!is_array($content)) {
+			error_log('Failed to insert post: No generated content');
+			return; // Exit early if no content is provided
+		}
+
 		// Cria o post no WordPress
 		$post_id = wp_insert_post([
-			'post_title'   => wp_trim_words($content, 10, '...'), // Gera um título com as primeiras palavras do conteúdo
-			'post_content' => $content,
+			'post_title'   => $content['title'],
+			'post_content' => $content['body'],
+			'post_excerpt' => $content['seo_description'],
 			'post_status'  => 'draft', // Salva como rascunho para revisão
 			'post_type'    => 'post', // Tipo de post padrão
-			'post_author'  => get_current_user_id() ?: 0, // Define o autor como o usuário atual ou um ID padrão
+			'post_author'  => get_option('story_flow_default_author')
 		]);
 
 		// Verifica se o post foi criado com sucesso
@@ -253,28 +347,5 @@ class Queue_Processor {
 			error_log('Failed to insert post: ' . $post_id->get_error_message());
 			return;
 		}
-
-		// Adiciona a meta key `_generated_by_ai` com o valor `true`
-		add_post_meta($post_id, '_generated_by_ai', 'true');
-
-		// // Atualiza a tabela do pitch com o ID do post gerado
-		// $pitch_table = $wpdb->prefix . 'sf_pitches';
-		// $updated = $wpdb->update(
-		// 	$pitch_table,
-		// 	['generated_post_id' => $post_id], // Atualiza o campo com o ID do post gerado
-		// 	['id' => $pitch_id], // Identifica o pitch correspondente
-		// 	['%d'], // Formato do valor a ser atualizado
-		// 	['%d']  // Formato do identificador
-		// );
-
-		// Verifica se a atualização foi bem-sucedida
-		// if ($updated === false) {
-		// 	error_log('Failed to update pitch with generated post ID.');
-		// 	return;
-		// }
-
-		// (Opcional) Registra uma mensagem de log ou exibe uma notificação de sucesso
-		error_log('Generated post saved successfully with ID: ' . $post_id . ' and linked to pitch ID: ' . $pitch_id);
 	}
-
 }
