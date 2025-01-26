@@ -107,23 +107,23 @@ class Pitch_Queue_Manager {
     }
 
     /**
-     * Checks for `assign` status and enqueues them.
+     * Checks for `approved` status and enqueues them.
      *
      * @return void
      */
-    public function check_assign_and_enqueue() {
+    public function check_approved_and_enqueue() {
         global $wpdb;
         $pitch_table = $wpdb->prefix . SF_TABLE_PITCH_SUGGESTIONS;
 
-        $assignments = $wpdb->get_results(
-            $wpdb->prepare( "SELECT id FROM $pitch_table WHERE status = %s", 'assign' )
+        $approvedments = $wpdb->get_results(
+            $wpdb->prepare( "SELECT id FROM $pitch_table WHERE status = %s", 'approved' )
         );
 
-        foreach ( $assignments as $assignment ) {
-            $this->add_to_queue( $assignment->id );
+        foreach ( $approvedments as $approvedment ) {
+            $this->add_to_queue( $approvedment->id );
 
             // Update the status to processing
-            $wpdb->update( $pitch_table, [ 'status' => 'processing' ], [ 'id' => $assignment->id ] );
+            $wpdb->update( $pitch_table, [ 'status' => 'processing' ], [ 'id' => $approvedment->id ] );
         }
     }
 }

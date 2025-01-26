@@ -29,8 +29,8 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 			// Hook for processing the queue
 			add_action( 'sf_process_queue_event', [ $this, 'process_queue' ] );
 
-			// Hook for checking `assign` status
-			add_action( 'sf_check_assign_event', [ $this, 'check_assign_and_enqueue' ] );
+			// Hook for checking `approved` status
+			add_action( 'sf_check_approved_event', [ $this, 'check_approved_and_enqueue' ] );
 		}
 
 		/**
@@ -100,8 +100,8 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 				wp_schedule_event( time(), 'sf_five_minutes', 'sf_process_queue_event' );
 			}
 
-			if ( ! wp_next_scheduled( 'sf_check_assign_event' ) ) {
-				wp_schedule_event( time(), 'sf_one_minute', 'sf_check_assign_event' );
+			if ( ! wp_next_scheduled( 'sf_check_approved_event' ) ) {
+				wp_schedule_event( time(), 'sf_one_minute', 'sf_check_approved_event' );
 			}
 		}
 
@@ -110,7 +110,7 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 		 */
 		public function deactivate() {
 			// Unschedule the cron events
-			foreach ( [ 'sf_process_queue_event', 'sf_check_assign_event' ] as $event ) {
+			foreach ( [ 'sf_process_queue_event', 'sf_check_approved_event' ] as $event ) {
 				$timestamp = wp_next_scheduled( $event );
 				if ( $timestamp ) {
 					wp_unschedule_event( $timestamp, $event );
@@ -127,11 +127,11 @@ if ( ! class_exists( 'SF_Activation' ) ) {
 		}
 
 		/**
-		 * Checks for `assign` status and enqueues them.
+		 * Checks for `approved` status and enqueues them.
 		 */
-		public function check_assign_and_enqueue() {
+		public function check_approved_and_enqueue() {
 			$queue_manager = new Pitch_Queue_Manager();
-			$queue_manager->check_assign_and_enqueue();
+			$queue_manager->check_approved_and_enqueue();
 		}
 	}
 }

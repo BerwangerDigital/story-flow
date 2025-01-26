@@ -85,7 +85,7 @@ msgstr ""
 #: includes/admin/templates/pitch-list-table.php:274
 #: includes/admin/templates/pitch-list-table.php:278
 #: includes/admin/templates/pitch-list-table.php:340
-msgid "Assign"
+msgid "Approved"
 msgstr ""
 
 #: includes/admin/templates/pitch-list-table.php:282

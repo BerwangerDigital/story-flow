@@ -56,7 +56,7 @@ class Pitch_List_Table extends WP_List_Table {
      *
      * @const array
      */
-	private const VALID_STATUSES = ['pending', 'assign', 'refused', 'generated'];
+	private const VALID_STATUSES = ['pending', 'approved', 'refused', 'generated'];
 
     /**
      * Constructor for the Pitch_List_Table class.
@@ -297,7 +297,7 @@ class Pitch_List_Table extends WP_List_Table {
 		$status_totals = [
 			'all'        => array_sum(wp_list_pluck($status_counts, 'count')),
 			'pending'    => $status_counts['pending']->count ?? 0,
-			'assign'     => $status_counts['assign']->count ?? 0,
+			'approved'     => $status_counts['approved']->count ?? 0,
 			'refused'    => $status_counts['refused']->count ?? 0,
 			'generated'  => $status_counts['generated']->count ?? 0,
 		];
@@ -343,7 +343,7 @@ class Pitch_List_Table extends WP_List_Table {
 		$label_status = [
 			'pending' => __('Pendente', SF_TEXTDOMAIN),
 			'processing' => __('Em Processamento', SF_TEXTDOMAIN),
-			'assign' => __('Aprovado', SF_TEXTDOMAIN),
+			'approved' => __('Aprovado', SF_TEXTDOMAIN),
 			'refused' => __('Recusado', SF_TEXTDOMAIN),
 			'generated' => __('Finalizado', SF_TEXTDOMAIN),
 		];
@@ -377,9 +377,9 @@ class Pitch_List_Table extends WP_List_Table {
 		switch ($item['status']) {
 			case 'pending':
 				$actions = [
-					'assign' => sprintf(
+					'approved' => sprintf(
 						'<a href="%s&nonce=%s">%s</a>',
-						esc_url($change_status_link . 'assign'),
+						esc_url($change_status_link . 'approved'),
 						esc_attr($nonce),
 						esc_html__('Aprovar', SF_TEXTDOMAIN)
 					),
@@ -397,7 +397,7 @@ class Pitch_List_Table extends WP_List_Table {
 					),
 				];
 				break;
-			case 'assign':
+			case 'approved':
 				$actions = [
 					// 'generated' => sprintf(
 					// 	'<a href="%s&nonce=%s">%s</a>',
@@ -531,7 +531,7 @@ class Pitch_List_Table extends WP_List_Table {
 	/**
      * Generate a link for views with counts and labels.
      *
-     * @param string $status        The status of the items (e.g., pending, assign).
+     * @param string $status        The status of the items (e.g., pending, approved).
      * @param string $label         The label for the status.
      * @param string $current_status The currently selected status.
      * @param int    $count         The count of items for this status.
@@ -604,7 +604,7 @@ class Pitch_List_Table extends WP_List_Table {
 		$label_status = [
 			'all' => __('Todos', SF_TEXTDOMAIN),
 			'pending' => __('Pendentes', SF_TEXTDOMAIN),
-			'assign' => __('Aprovados', SF_TEXTDOMAIN),
+			'approved' => __('Aprovados', SF_TEXTDOMAIN),
 			'refused' => __('Recusados', SF_TEXTDOMAIN),
 			'generated' => __('Finalizados', SF_TEXTDOMAIN),
 		];
@@ -647,7 +647,7 @@ class Pitch_List_Table extends WP_List_Table {
 			wp_die(__('Nonce inválido. Ação não permitida.', SF_TEXTDOMAIN));
 		}
 
-		$valid_statuses = ['pending', 'assign', 'refused', 'processing', 'generated'];
+		$valid_statuses = ['pending', 'approved', 'refused', 'processing', 'generated'];
 		if (!in_array($new_status, $valid_statuses, true)) {
 			wp_die(__('Status inválido.', SF_TEXTDOMAIN));
 		}
@@ -669,7 +669,7 @@ class Pitch_List_Table extends WP_List_Table {
 		// If the new status is "generated", add the record to the processing queue
         $queue_manager = new Pitch_Queue_Manager();
 
-        if ('assign' === $new_status) {
+        if ('approved' === $new_status) {
             $queue_manager->add_to_queue($post_id);
         } elseif ('generated' === $new_status) {
             $queue_manager->add_to_queue_with_priority($post_id);
