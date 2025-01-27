@@ -13,7 +13,7 @@ class Prompt_Form_Page {
 
     public function __construct() {
         global $wpdb;
-        $this->table_name = $wpdb->prefix . 'sf_prompts';
+        $this->table_name = $wpdb->prefix . SF_TABLE_PROMPTS;
         $this->pitch_table_name = $wpdb->prefix . SF_TABLE_PITCH_SUGGESTIONS;
     }
 
@@ -36,12 +36,33 @@ class Prompt_Form_Page {
         global $wpdb;
 
 		$errors = [];
+		$allowed_html = array(
+			'a' => array(
+				'href' => array(),
+				'title' => array(),
+				'target' => array(),
+			),
+			'br' => array(),
+			'em' => array(),
+			'strong' => array(),
+			'p' => array(),
+			'ul' => array(),
+			'ol' => array(),
+			'h1' => array(),
+			'h2' => array(),
+			'h3' => array(),
+			'h4' => array(),
+			'h5' => array(),
+			'h6' => array(),
+		);
 
         $id = sf_retrieve($_POST, 'id', false, 'intval');
         $category = sf_retrieve($_POST, 'category', false, 'sanitize_text_field');
         $topic = sf_retrieve($_POST, 'topic', false, 'sanitize_text_field');
         $pillar = sf_retrieve($_POST, 'pillar', false, 'sanitize_text_field');
-        $prompt = sf_retrieve($_POST, 'prompt', false, 'sanitize_textarea_field');
+        $prompt = sf_retrieve($_POST, 'prompt', false, function($value) use ($allowed_html) {
+			return wp_kses($value, $allowed_html);
+		});
 
         if (empty($pillar) || empty($prompt)) {
             add_settings_error('prompt_form', 'prompt_error', __('Os campos Pilar e Prompt são de preenchimento obrigatório.', SF_TEXTDOMAIN), 'error');
