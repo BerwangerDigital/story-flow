@@ -52,10 +52,15 @@ class Queue_Processor {
             )
         );
 
+		// if (!$items) {
+		// 	error_log(__('No items found in the queue.', SF_TEXTDOMAIN));
+		// 	return; // Exit early if no items are found
+		// }
+
         foreach ($items as $item) {
             try {
                 // Mark the item as "processing"
-                $this->update_queue_status($item->id, 'processing');
+                //$this->update_queue_status($item->id, 'processing');
 
 				// Fetch the pitch details
 				$pitch_details = $wpdb->get_row(
@@ -65,37 +70,99 @@ class Queue_Processor {
 					)
 				);
 
-				if (!$pitch_details) {
-					throw new \Exception(__('Pitch details not found.', SF_TEXTDOMAIN));
-				}
+				//if (!$pitch_details) {
+				//	throw new \Exception(__('Pitch details not found.', SF_TEXTDOMAIN));
+				//}
 
                 // Fetch the prompt
-                $prompt = $this->get_prompt_for_pitch($item->pitch_id) ?: $this->get_default_prompt($item->pitch_id);
+                $prompt = $this->get_prompt($item->pitch_id);
 
-                if (!$prompt) {
-                    throw new \Exception(__('No valid prompt available.', SF_TEXTDOMAIN));
-                }
+                //if (!$prompt) {
+                //    throw new \Exception(__('No valid prompt available.', SF_TEXTDOMAIN));
+                //}
 
                 // Generate content using OpenAI
-                $content = $this->send_to_openai($prompt);
+                //$content = $this->send_to_openai_structured($prompt);
+                $content = $this->curl_to_openai_structured($prompt);
 
                 // Save the generated content
-                $this->save_generated_content($content, $item->pitch_id);
+                //$this->save_generated_content($content, $item->pitch_id);
 
-				if (!$content) {
-                    throw new \Exception(__('Generated content is empty.', SF_TEXTDOMAIN));
-                }
+				//if (!$content) {
+                //    throw new \Exception(__('Generated content is empty.', SF_TEXTDOMAIN));
+                //}
 
                 // Update statuses
-                $this->update_queue_status($item->id, 'completed');
-				$this->update_pitch_status($item->pitch_id, 'generated');
+                //$this->update_queue_status($item->id, 'completed');
+				//$this->update_pitch_status($item->pitch_id, 'generated');
 
             } catch (\Exception $e) {
                 // Handle failure
-                $this->update_queue_status($item->id, 'failed');
-                error_log(sprintf(__('Queue processing error: %s', SF_TEXTDOMAIN), $e->getMessage()));
+                //$this->update_queue_status($item->id, 'failed');
+                //error_log(sprintf(__('Queue processing error: %s', SF_TEXTDOMAIN), $e->getMessage()));
             }
         }
+    }
+
+    /**
+     * Combines logic to fetch the appropriate or default prompt for a pitch.
+     *
+     * @param int $pitch_id The pitch ID.
+     * @return string|null The generated prompt with replaced placeholders, or null if not found.
+     */
+    private function get_prompt($pitch_id) {
+        global $wpdb;
+
+        // Retrieve pitch details
+        $pitch = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT category, topic, suggested_pitch, main_seo_keyword FROM {$this->pitch_table} WHERE id = %d",
+                $pitch_id
+            )
+        );
+
+        if (!$pitch) {
+            return null;
+        }
+
+        // Priority 1: Category + Topic
+        $prompt_template = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT prompt FROM {$wpdb->prefix}" . SF_TABLE_PROMPTS . " WHERE category = %s AND topic = %s LIMIT 1",
+                $pitch->category,
+                $pitch->topic
+            )
+        );
+
+        // Priority 2: Category
+        if (!$prompt_template) {
+            $prompt_template = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT prompt FROM {$wpdb->prefix}" . SF_TABLE_PROMPTS . " WHERE category = %s AND topic IS NULL LIMIT 1",
+                    $pitch->category
+                )
+            );
+        }
+
+        // Use default prompt if no specific prompt is found
+        if (!$prompt_template) {
+            $prompt_template = get_option('story_flow_default_prompt', null);
+        }
+
+        if (!$prompt_template) {
+            return null;
+        }
+
+        // Prepare data for placeholder replacement
+        $data = [
+            'pitch' => $pitch->suggested_pitch,
+            'keywords' => $pitch->main_seo_keyword,
+            'topic' => $pitch->topic,
+			'category' => $pitch->category,
+        ];
+
+        // Replace placeholders in the prompt template
+        return $this->prepare_prompt($prompt_template, $data);
     }
 
     /**
@@ -115,7 +182,6 @@ class Queue_Processor {
 		);
 	}
 
-
     /**
      * Updates the status of a queue item.
      *
@@ -132,61 +198,6 @@ class Queue_Processor {
             ['%d']
         );
     }
-
-/**
-	 * Retrieves the appropriate prompt for a pitch based on its category and topic.
-	 *
-	 * @param int $pitch_id The pitch ID.
-	 * @return string|null The generated prompt with replaced placeholders, or null if not found.
-	 */
-	private function get_prompt_for_pitch($pitch_id) {
-		global $wpdb;
-
-		// Retrieve pitch details
-		$pitch = $wpdb->get_row(
-			$wpdb->prepare(
-				"SELECT category, topic, suggested_pitch, main_seo_keyword FROM {$wpdb->prefix}" . SF_TABLE_PITCH_SUGGESTIONS . " WHERE id = %d",
-				$pitch_id
-			)
-		);
-
-		if (!$pitch) {
-			return null;
-		}
-
-		// Priority 1: Category + Topic
-		$prompt_template = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT prompt FROM {$wpdb->prefix}" . SF_TABLE_PROMPTS . " WHERE category = %s AND topic = %s LIMIT 1",
-				$pitch->category,
-				$pitch->topic
-			)
-		);
-
-		// Priority 2: Category
-		if (!$prompt_template) {
-			$prompt_template = $wpdb->get_var(
-				$wpdb->prepare(
-					"SELECT prompt FROM {$wpdb->prefix}" . SF_TABLE_PROMPTS . " WHERE category = %s AND topic IS NULL LIMIT 1",
-					$pitch->category
-				)
-			);
-		}
-
-		if (!$prompt_template) {
-			return null;
-		}
-
-		// Prepare data for placeholder replacement
-		$data = [
-			'pitch' => $pitch->suggested_pitch,
-			'keywords' => $pitch->main_seo_keyword,
-			'topic' => $pitch->topic,
-		];
-
-		// Replace placeholders in the prompt template
-		return $this->prepare_prompt($prompt_template, $data);
-	}
 
 	/**
 	 * Replaces placeholders in the prompt template with the provided data.
@@ -209,114 +220,225 @@ class Queue_Processor {
 	}
 
     /**
-     * Retrieves the default prompt from options.
+     * Sends a structured prompt to OpenAI and retrieves the response.
      *
-     * @return string|null The default prompt, or null if not set.
+     * @param string $prompt The prompt text.
+     * @return array|null The generated structured content from OpenAI.
      */
-    private function get_default_prompt($pitch_id) {
-		global $wpdb;
+    private function curl_to_openai_structured($prompt) {
+        $system_prompt = get_option('story_flow_default_prompt', '');
 
-		// Retrieve pitch details
-		$pitch = $wpdb->get_row(
-			$wpdb->prepare(
-				"SELECT category, topic, suggested_pitch, main_seo_keyword FROM {$wpdb->prefix}" . SF_TABLE_PITCH_SUGGESTIONS . " WHERE id = %d",
-				$pitch_id
-			)
-		);
+        $ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, 'https://api.openai.com/v1/chat/completions');
+		curl_setopt($ch, CURLOPT_POST, 1);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
-		if (!$pitch) {
-			return null;
+		curl_setopt($ch, CURLOPT_HTTPHEADER, [
+			'Authorization: Bearer ' . CONFIGURATION__OPENAI__APIKEY,
+			'Content-Type: application/json'
+		]);
+
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'system', 'content' => $system_prompt],
+                ['role' => 'user', 'content' => $prompt],
+            ],
+            'tools' => [
+                [
+                    'type' => 'function',
+                    'function' => [
+                        'name' => 'generate_structured_output',
+                        'parameters' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'title' => ['type' => 'string', 'description' => 'Título do artigo.'],
+                                'description' => ['type' => 'string', 'description' => 'Descrição do artigo otimizada para SEO.'],
+                                'body' => ['type' => 'string', 'description' => 'Conteúdo do artigo.']
+                            ],
+                            'required' => [
+                                'title',
+                                'description',
+                                'body'
+                            ],
+                            'additionalProperties' => false
+                        ],
+                        'strict' => true
+                    ]
+                ]
+            ],
+            'tool_choice' => [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'generate_structured_output'
+                ],
+            ],
+            'max_tokens' => 2500,
+            'temperature' => 0.5,
+            'top_p' => 0.9,
+            'frequency_penalty' => 0.2,
+            'presence_penalty' => 0.3,
+        ]));
+
+        // Expected response:
+        // {
+        // "title":"Os Melhores Exercícios para Emagrecer em Casa: Guia Completo",
+        // "description":"Descubra os melhores exercícios para emagrecer em casa e como incorporá-los na sua rotina para uma vida mais saudável e fitness.",
+        // "body":"## Introdu\u00e7\u00e3o\n\nEm tempos de pandemia, a busca por exerc\u00edcios para emagrecer em casa tem crescido exponencialmente. Muitas pessoas est\u00e3o procurando maneiras de manter a forma e a sa\u00fade sem sair de casa. Mas qual \u00e9 o melhor exerc\u00edcio para emagrecer em casa?\n\n## Aer\u00f3bicos: Perda de peso eficiente\n\nOs exerc\u00edcios aer\u00f3bicos s\u00e3o uma excelente op\u00e7\u00e3o para quem deseja perder peso. Eles ajudam a aumentar o metabolismo e a queimar calorias, contribuindo para a perda de peso. Alguns exemplos de exerc\u00edcios aer\u00f3bicos que voc\u00ea pode fazer em casa incluem pular corda, dan\u00e7ar, correr no lugar e fazer polichinelos.\n\n## Treino de for\u00e7a: Constru\u00e7\u00e3o muscular\n\nEnquanto os exerc\u00edcios aer\u00f3bicos s\u00e3o \u00f3timos para queimar calorias, o treino de for\u00e7a \u00e9 essencial para construir e manter a massa muscular. Isso \u00e9 importante porque a massa muscular ajuda a aumentar o seu metabolismo, o que significa que voc\u00ea vai queimar mais calorias mesmo quando estiver em repouso. Exemplos de exerc\u00edcios de treino de for\u00e7a que voc\u00ea pode fazer em casa incluem flex\u00f5es, agachamentos e levantamento de peso.\n\n## Yoga e Pilates: Equil\u00edbrio e flexibilidade\n\nPara aqueles que preferem um ritmo mais lento, tanto o yoga quanto o pilates s\u00e3o \u00f3timas op\u00e7\u00f5es. Ambos s\u00e3o excelentes para melhorar o equil\u00edbrio e a flexibilidade, al\u00e9m de ajudarem a fortalecer os m\u00fasculos centrais. Eles tamb\u00e9m podem ajudar a aliviar o estresse, o que pode ser um fator contribuinte para o ganho de peso.\n\n## Conclus\u00e3o\n\nA chave para a perda de peso efetiva \u00e9 a consist\u00eancia. Escolha um ou mais exerc\u00edcios que voc\u00ea goste e se comprometa a faz\u00ea-los regularmente. Lembre-se, qualquer exerc\u00edcio \u00e9 melhor do que nenhum exerc\u00edcio. Comece devagar e gradualmente aumente a intensidade \u00e0 medida que fica mais forte. E lembre-se, sempre \u00e9 importante consultar um profissional de sa\u00fade antes de iniciar qualquer novo programa de exerc\u00edcios."
+        // }
+
+        // TODO: Como converter a propriedade body para o formato esperado pelo WordPress?
+
+        $response = curl_exec($ch);
+
+		if (curl_errno($ch)) {
+			curl_close($ch);
+			return false;
 		}
 
-		// Prepare data for placeholder replacement
-		$data = [
-			'pitch' => $pitch->suggested_pitch,
-			'keywords' => $pitch->main_seo_keyword,
-			'topic' => $pitch->topic,
-		];
+		curl_close($ch);
 
-		$prompt_template = get_option('story_flow_default_prompt', null);
+		$response = json_decode($response, true);
 
-        return $this->prepare_prompt($prompt_template, $data);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log("JSON Decode Error: " . json_last_error_msg());
+            return null;
+        }
+
+        $raw_arguments = $response['choices'][0]['message']['tool_calls'][0]['function']['arguments'];
+
+        error_log("Raw Arguments: " . print_r($raw_arguments, true));
+
+        $raw_arguments = json_encode($raw_arguments, true);
+
+        $content = json_decode($raw_arguments, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log("JSON Decode Error: " . json_last_error_msg());
+            return null;
+        }
+
+        error_log("Generated Content JSON: " . print_r($content, true));
+
+        return $content;
     }
 
-	/**
-	 * Sends a prompt to OpenAI and retrieves the response.
-	 *
-	 * @param string $prompt The prompt text.
-	 * @return string The generated content from OpenAI.
-	 */
-	private function send_to_openai($prompt) {
+    /**
+     * Sends a structured prompt to OpenAI and retrieves the response.
+     *
+     * @param string $prompt The prompt text.
+     * @return array|null The generated structured content from OpenAI.
+     */
+    private function send_to_openai_structured($prompt) {
+        $system_prompt = get_option('story_flow_default_prompt', '');
 
-		$system_prompt = get_option('story_flow_default_prompt', '');
+        $response = $this->openai_client->chat()->create([
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'system', 'content' => $system_prompt],
+                ['role' => 'user', 'content' => $prompt],
+            ],
+            'tools' => [
+                [
+                    'type' => 'function',
+                    'function' => [
+                        'name' => 'generate_structured_output',
+                        'parameters' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'title' => ['type' => 'string', 'description' => 'Título do artigo.'],
+                                'description' => ['type' => 'string', 'description' => 'Descrição do artigo otimizada para SEO.'],
+                                'body' => ['type' => 'string', 'description' => 'Conteúdo do artigo.']
+                            ],
+                            'required' => [
+                                'title',
+                                'description',
+                                'body'
+                            ],
+                            'additionalProperties' => false
+                        ],
+                        'strict' => true
+                    ]
+                ]
+            ],
+            'tool_choice' => [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'generate_structured_output'
+                ],
+            ],
+            'max_tokens' => 2500,
+            'temperature' => 0.5,
+            'top_p' => 0.9,
+            'frequency_penalty' => 0.2,
+            'presence_penalty' => 0.3,
+        ]);
 
-		// Step 1: Generate the body of the post
-		$response_body = $this->openai_client->chat()->create([
-			'model' => 'gpt-4',
-			'messages' => [
-				['role' => 'system', 'content' => $system_prompt],
-				['role' => 'user', 'content' => 'Escreva somente o corpo da matéria em texto puro conforme as instruções: ' . $prompt],
-			],
-			'max_tokens' => 1500,
-			'temperature' => 0.5,
-			'top_p' => 0.9,
-			'frequency_penalty' => 0.2,
-			'presence_penalty' => 0.3,
-		]);
+		$raw_arguments = $response->choices[0]->message->toolCalls[0]->function->arguments ?? null;
 
-		$body = $response_body['choices'][0]['message']['content'] ?? null;
+        if (!$raw_arguments) {
+            return null;
+        }
 
-		if (!$body) {
-			return null; // Exit early if no body is generated
-		}
+        // Usar saneamento avançado para remover caracteres inválidos
+        //$sanitized_arguments = preg_replace('/[\\x00-\\x1F\\x7F]/u', '', $sanitized_arguments);
 
-		// Step 2: Generate the title based on the body
-		$response_title = $this->openai_client->chat()->create([
-			'model' => 'gpt-4',
-			'messages' => [
-				['role' => 'system', 'content' => 'Você é um assistente especializado em geração de títulos atrativos e claros para SEO'],
-				['role' => 'assistant', 'content' => $body],
-				['role' => 'user', 'content' => 'Com base no texto enviado, gere um título curto e claro para o artigo, que provoque a curiosidade do leitor. Utilize em caixa-alta apenas a primeira letra do título.'],
-			],
-			'max_tokens' => 250
-		]);
+        // Remove BOM do início da string, se houver
+        //$sanitized_arguments = preg_replace('/^\xEF\xBB\xBF/', '', $raw_arguments);
 
-		$title = $response_title['choices'][0]['message']['content'] ?? null;
+        // $sanitized_arguments = preg_replace(
+        //     '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u',
+        //     '',
+        //     $raw_arguments
+        // );
 
-		if (!$title) {
-			return null; // Exit early if no title is generated
-		}
+        error_log(var_dump($raw_arguments));
 
-		if (substr($title, 0, 1) === '"' || substr($title, 0, 1) === "'") {
-			$title = substr($title, 1);
-		}
+        $sanitized_arguments = utf8_encode($raw_arguments);
+        $content = json_decode($sanitized_arguments, true);
 
-		if (substr($title, -1) === '"' || substr($title, -1) === "'") {
-			$title = substr($title, 0, -1);
-		}
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log("JSON Decode Error: " . json_last_error_msg());
+            //error_log("Sanitized JSON: " . $raw_arguments);
+            return null;
+        }
 
-		// Step 3: Generate the SEO description based on the body
-		$response_seo = $this->openai_client->chat()->create([
-			'model' => 'gpt-4',
-			'messages' => [
-				['role' => 'system', 'content' => 'Você é um assistente especializado em descrições curtas e otimizadas para SEO.'],
-				['role' => 'assistant', 'content' => $body],
-				['role' => 'user', 'content' => 'Com base no texto acima, crie uma descrição otimizada para SEO com até 160 caracteres.'],
-			]
-		]);
+        // Format body content into WordPress block editor format
+        //$content['body'] = $this->format_body_to_blocks($content['body']);
 
-		$seo_description = $response_seo['choices'][0]['message']['content'] ?? null;
+        error_log("Generated Content: " . print_r($content, true));
 
-		if (!$seo_description) {
-			return null; // Exit early if no SEO description is generated
-		}
+        return $content;
+    }
 
-		return [
-			'title' => trim($title),
-			'body' => trim($body),
-			'seo_description' => trim($seo_description),
-		];
-	}
+   /**
+     * Formats the body content into WordPress block editor format.
+     *
+     * @param string $body The raw body content.
+     * @return string The formatted content with blocks.
+     */
+    private function format_body_to_blocks($body) {
+        $lines = explode("\n", trim($body));
+        $formatted_body = '';
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+
+            if (empty($line)) {
+                continue;
+            }
+
+            if (strpos($line, '##') === 0) {
+                // Convert ## headings to H2 blocks
+                $formatted_body .= "<!-- wp:heading {\"level\":2} -->\n" . substr($line, 2) . "\n<!-- /wp:heading -->\n";
+            } else {
+                // Convert plain text to paragraph blocks
+                $formatted_body .= "<!-- wp:paragraph -->\n" . $line . "\n<!-- /wp:paragraph -->\n";
+            }
+        }
+
+        return $formatted_body;
+    }
 
 	/**
 	 * Saves the generated content as a normal post and links it to the pitch in the database.
@@ -332,17 +454,17 @@ class Queue_Processor {
 			return; // Exit early if no content is provided
 		}
 
-		// Cria o post no WordPress
+		// Check if the post was created successfully
 		$post_id = wp_insert_post([
 			'post_title'   => $content['title'],
 			'post_content' => $content['body'],
-			'post_excerpt' => $content['seo_description'],
-			'post_status'  => 'draft', // Salva como rascunho para revisão
-			'post_type'    => 'post', // Tipo de post padrão
+			'post_excerpt' => $content['description'],
+			'post_status'  => 'draft',
+			'post_type'    => 'post',
 			'post_author'  => get_option('story_flow_default_author')
 		]);
 
-		// Verifica se o post foi criado com sucesso
+		// Check if the post was created successfully
 		if (is_wp_error($post_id)) {
 			error_log('Failed to insert post: ' . $post_id->get_error_message());
 			return;
